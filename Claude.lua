@@ -1,545 +1,522 @@
--- Lua Scripting Wizard's Forge - Roblox LocalScript
--- サイバーパンク風コードエディタUI
+-- Roblox LocalScript - SciFi Lua Editor UI
+-- Place this in StarterPlayer > StarterPlayerScripts
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- メインScreenGui作成
+-- Config
+local CONFIG = {
+	scale = 1,
+	autoSave = true,
+	darkMode = true,
+	colors = {
+		bg = Color3.fromRGB(3, 7, 18),
+		panel = Color3.fromRGB(17, 24, 39),
+		border = Color3.fromRGB(6, 182, 212),
+		cyan = Color3.fromRGB(34, 211, 238),
+		text = Color3.fromRGB(209, 213, 219),
+		success = Color3.fromRGB(34, 197, 94),
+		warning = Color3.fromRGB(234, 179, 8),
+		error = Color3.fromRGB(239, 68, 68),
+		purple = Color3.fromRGB(168, 85, 247)
+	}
+}
+
+-- State
+local state = {
+	expandedFolders = {scripts = true, modules = false},
+	selectedFile = "MainScript.lua",
+	consoleLines = {
+		{type = "info", text = "> IDE initialized successfully"},
+		{type = "success", text = "✓ Workspace loaded"},
+		{type = "warning", text = "⚠ Autosave enabled"}
+	}
+}
+
+-- File Tree Data
+local fileTree = {
+	scripts = {"MainScript.lua", "PlayerController.lua", "GameManager.lua"},
+	modules = {"Utilities.lua", "DataHandler.lua"}
+}
+
+local codeExample = [[-- Roblox LocalScript
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+-- Initialize UI
+local function initializeUI()
+    print("Initializing player UI...")
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "MainUI"
+    screenGui.Parent = player.PlayerGui
+    
+    return screenGui
+end
+
+-- Event handler
+local function onPlayerAdded()
+    wait(1)
+    local ui = initializeUI()
+    print("UI ready for:", player.Name)
+end
+
+-- Start
+onPlayerAdded()]]
+
+-- Create ScreenGui
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LuaScriptingForge"
+screenGui.Name = "LuaForgeIDE"
 screenGui.ResetOnSpawn = false
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
--- メインフレーム
+-- Helper Functions
+local function createCorner(radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	return corner
+end
+
+local function createStroke(color, thickness, transparency)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color
+	stroke.Thickness = thickness or 1
+	stroke.Transparency = transparency or 0.7
+	return stroke
+end
+
+local function createGlow(parent, color, size)
+	local glow = Instance.new("ImageLabel")
+	glow.Name = "Glow"
+	glow.BackgroundTransparency = 1
+	glow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+	glow.ImageColor3 = color
+	glow.ImageTransparency = 0.7
+	glow.Size = UDim2.new(1, size, 1, size)
+	glow.Position = UDim2.new(0.5, -size/2, 0.5, -size/2)
+	glow.ZIndex = 0
+	glow.Parent = parent
+	return glow
+end
+
+local function tweenHover(button, scale)
+	button.MouseEnter:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.2), {Size = button.Size + UDim2.new(0, scale, 0, scale)}):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.2), {Size = button.Size}):Play()
+	end)
+end
+
+-- Main Container
 local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 1200, 0, 700)
-mainFrame.Position = UDim2.new(0.5, -600, 0.5, -350)
-mainFrame.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+mainFrame.Size = UDim2.new(1, 0, 1, 0)
+mainFrame.BackgroundColor3 = CONFIG.colors.bg
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 
--- UIコーナー（角丸）
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 12)
-mainCorner.Parent = mainFrame
+-- Cyber Background Effect
+local bgEffect1 = Instance.new("ImageLabel")
+bgEffect1.BackgroundTransparency = 1
+bgEffect1.Size = UDim2.new(0, 400, 0, 400)
+bgEffect1.Position = UDim2.new(0.25, 0, 0, 0)
+bgEffect1.ImageColor3 = CONFIG.colors.cyan
+bgEffect1.ImageTransparency = 0.7
+bgEffect1.ZIndex = 0
+bgEffect1.Parent = mainFrame
 
--- ネオングロー効果
-local glowStroke = Instance.new("UIStroke")
-glowStroke.Color = Color3.fromRGB(6, 182, 212)
-glowStroke.Thickness = 2
-glowStroke.Transparency = 0.5
-glowStroke.Parent = mainFrame
+local bgEffect2 = Instance.new("ImageLabel")
+bgEffect2.BackgroundTransparency = 1
+bgEffect2.Size = UDim2.new(0, 400, 0, 400)
+bgEffect2.Position = UDim2.new(0.75, 0, 1, -400)
+bgEffect2.ImageColor3 = Color3.fromRGB(59, 130, 246)
+bgEffect2.ImageTransparency = 0.7
+bgEffect2.ZIndex = 0
+bgEffect2.Parent = mainFrame
 
--- タイトルバー
-local titleBar = Instance.new("Frame")
-titleBar.Name = "TitleBar"
-titleBar.Size = UDim2.new(1, 0, 0, 50)
-titleBar.BackgroundColor3 = Color3.fromRGB(20, 30, 55)
-titleBar.BorderSizePixel = 0
-titleBar.Parent = mainFrame
+-- Top Toolbar
+local toolbar = Instance.new("Frame")
+toolbar.Size = UDim2.new(1, -40, 0, 70)
+toolbar.Position = UDim2.new(0, 20, 0, 20)
+toolbar.BackgroundColor3 = CONFIG.colors.panel
+toolbar.BackgroundTransparency = 0.2
+toolbar.BorderSizePixel = 0
+toolbar.Parent = mainFrame
+createCorner(16).Parent = toolbar
+createStroke(CONFIG.colors.border, 1, 0.7).Parent = toolbar
 
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 12)
-titleCorner.Parent = titleBar
+-- Toolbar Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(0, 200, 1, 0)
+title.Position = UDim2.new(0, 60, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "LUAFORGE IDE"
+title.TextColor3 = CONFIG.colors.cyan
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = toolbar
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Name = "TitleLabel"
-titleLabel.Size = UDim2.new(0, 400, 1, 0)
-titleLabel.Position = UDim2.new(0, 60, 0, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Lua Scripting Wizard's Forge"
-titleLabel.TextColor3 = Color3.fromRGB(103, 232, 249)
-titleLabel.TextSize = 20
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.Parent = titleBar
-
--- アイコン装飾
-local iconFrame = Instance.new("Frame")
-iconFrame.Size = UDim2.new(0, 32, 0, 32)
-iconFrame.Position = UDim2.new(0, 15, 0.5, -16)
-iconFrame.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
-iconFrame.BorderSizePixel = 0
-iconFrame.Parent = titleBar
-
-local iconCorner = Instance.new("UICorner")
-iconCorner.CornerRadius = UDim.new(0, 6)
-iconCorner.Parent = iconFrame
-
--- 左サイドバー（ファイルツリー）
-local leftSidebar = Instance.new("Frame")
-leftSidebar.Name = "LeftSidebar"
-leftSidebar.Size = UDim2.new(0, 250, 1, -50)
-leftSidebar.Position = UDim2.new(0, 0, 0, 50)
-leftSidebar.BackgroundColor3 = Color3.fromRGB(20, 30, 48)
-leftSidebar.BorderSizePixel = 0
-leftSidebar.Parent = mainFrame
-
-local sidebarStroke = Instance.new("UIStroke")
-sidebarStroke.Color = Color3.fromRGB(6, 182, 212)
-sidebarStroke.Thickness = 1
-sidebarStroke.Transparency = 0.7
-sidebarStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-sidebarStroke.Parent = leftSidebar
-
--- ファイルツリーヘッダー
-local treeHeader = Instance.new("TextLabel")
-treeHeader.Size = UDim2.new(1, 0, 0, 40)
-treeHeader.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-treeHeader.BorderSizePixel = 0
-treeHeader.Text = "📁 Project Files"
-treeHeader.TextColor3 = Color3.fromRGB(103, 232, 249)
-treeHeader.TextSize = 14
-treeHeader.Font = Enum.Font.GothamBold
-treeHeader.TextXAlignment = Enum.TextXAlignment.Left
-treeHeader.Parent = leftSidebar
-
-local treePadding = Instance.new("UIPadding")
-treePadding.PaddingLeft = UDim.new(0, 15)
-treePadding.Parent = treeHeader
-
--- ファイルリスト（スクロール可能）
-local fileList = Instance.new("ScrollingFrame")
-fileList.Name = "FileList"
-fileList.Size = UDim2.new(1, 0, 1, -40)
-fileList.Position = UDim2.new(0, 0, 0, 40)
-fileList.BackgroundTransparency = 1
-fileList.BorderSizePixel = 0
-fileList.ScrollBarThickness = 4
-fileList.ScrollBarImageColor3 = Color3.fromRGB(6, 182, 212)
-fileList.CanvasSize = UDim2.new(0, 0, 0, 400)
-fileList.Parent = leftSidebar
-
-local listLayout = Instance.new("UIListLayout")
-listLayout.Padding = UDim.new(0, 2)
-listLayout.Parent = fileList
-
--- ファイルアイテム作成関数
-local function createFileItem(name, icon, indent)
-	local fileItem = Instance.new("TextButton")
-	fileItem.Size = UDim2.new(1, -10, 0, 30)
-	fileItem.BackgroundColor3 = Color3.fromRGB(30, 40, 60)
-	fileItem.BackgroundTransparency = 1
-	fileItem.BorderSizePixel = 0
-	fileItem.Text = icon .. " " .. name
-	fileItem.TextColor3 = Color3.fromRGB(163, 230, 250)
-	fileItem.TextSize = 12
-	fileItem.Font = Enum.Font.Code
-	fileItem.TextXAlignment = Enum.TextXAlignment.Left
-	fileItem.Parent = fileList
-	
-	local itemPadding = Instance.new("UIPadding")
-	itemPadding.PaddingLeft = UDim.new(0, indent)
-	itemPadding.Parent = fileItem
-	
-	local itemCorner = Instance.new("UICorner")
-	itemCorner.CornerRadius = UDim.new(0, 4)
-	itemCorner.Parent = fileItem
-	
-	-- ホバーエフェクト
-	fileItem.MouseEnter:Connect(function()
-		fileItem.BackgroundTransparency = 0.9
-		fileItem.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
-	end)
-	
-	fileItem.MouseLeave:Connect(function()
-		fileItem.BackgroundTransparency = 1
-	end)
-	
-	-- クリックエフェクト
-	fileItem.MouseButton1Click:Connect(function()
-		fileItem.BackgroundTransparency = 0.8
-		fileItem.BackgroundColor3 = Color3.fromRGB(14, 165, 233)
-		wait(0.1)
-		fileItem.BackgroundTransparency = 0.9
-		fileItem.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
-	end)
-	
-	return fileItem
+-- Status Dots
+local dotColors = {CONFIG.colors.error, CONFIG.colors.warning, CONFIG.colors.success}
+for i, color in ipairs(dotColors) do
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(0, 12, 0, 12)
+	dot.Position = UDim2.new(0, 20 + (i-1)*20, 0.5, -6)
+	dot.BackgroundColor3 = color
+	dot.BorderSizePixel = 0
+	dot.Parent = toolbar
+	createCorner(6).Parent = dot
 end
 
--- サンプルファイル追加
-createFileItem("game.lua", "📄", 15)
-createFileItem("player_scripts", "📁", 15)
-createFileItem("movement.lua", "📄", 30)
-createFileItem("inventory.lua", "📄", 30)
-createFileItem("modules", "📁", 15)
-createFileItem("gnode.lua", "📄", 30)
-createFileItem("srooklua", "📄", 30)
-createFileItem("tnode.lua", "📄", 30)
-createFileItem("config.lua", "📄", 15)
+-- Button Helper Function
+local function createButton(parent, text, position, color, icon)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 100, 0, 36)
+	btn.Position = position
+	btn.BackgroundColor3 = color
+	btn.BorderSizePixel = 0
+	btn.Text = (icon or "") .. " " .. text
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 14
+	btn.Parent = parent
+	createCorner(8).Parent = btn
+	
+	-- Hover effect
+	local originalSize = btn.Size
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.2), {
+			Size = UDim2.new(originalSize.X.Scale, originalSize.X.Offset + 4, originalSize.Y.Scale, originalSize.Y.Offset + 4)
+		}):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.2), {Size = originalSize}):Play()
+	end)
+	
+	return btn
+end
 
--- 中央エディタエリア
-local editorArea = Instance.new("Frame")
-editorArea.Name = "EditorArea"
-editorArea.Size = UDim2.new(1, -570, 1, -50)
-editorArea.Position = UDim2.new(0, 250, 0, 50)
-editorArea.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-editorArea.BorderSizePixel = 0
-editorArea.Parent = mainFrame
+-- Control Buttons
+local runBtn = createButton(toolbar, "Run", UDim2.new(1, -330, 0.5, -18), CONFIG.colors.success, "▶")
+local debugBtn = createButton(toolbar, "Debug", UDim2.new(1, -220, 0.5, -18), CONFIG.colors.warning, "🐞")
+local stopBtn = createButton(toolbar, "Stop", UDim2.new(1, -110, 0.5, -18), CONFIG.colors.error, "■")
 
--- エディタヘッダー（タブ）
+-- Left Sidebar - File Explorer
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, 250, 1, -180)
+sidebar.Position = UDim2.new(0, 20, 0, 110)
+sidebar.BackgroundColor3 = CONFIG.colors.panel
+sidebar.BackgroundTransparency = 0.2
+sidebar.BorderSizePixel = 0
+sidebar.Parent = mainFrame
+createCorner(16).Parent = sidebar
+createStroke(CONFIG.colors.border, 1, 0.8).Parent = sidebar
+
+local sidebarTitle = Instance.new("TextLabel")
+sidebarTitle.Size = UDim2.new(1, -20, 0, 40)
+sidebarTitle.Position = UDim2.new(0, 10, 0, 10)
+sidebarTitle.BackgroundTransparency = 1
+sidebarTitle.Text = "📁 EXPLORER"
+sidebarTitle.TextColor3 = CONFIG.colors.cyan
+sidebarTitle.Font = Enum.Font.GothamBold
+sidebarTitle.TextSize = 16
+sidebarTitle.TextXAlignment = Enum.TextXAlignment.Left
+sidebarTitle.Parent = sidebar
+
+-- File Tree Scroll
+local fileScroll = Instance.new("ScrollingFrame")
+fileScroll.Size = UDim2.new(1, -20, 1, -60)
+fileScroll.Position = UDim2.new(0, 10, 0, 50)
+fileScroll.BackgroundTransparency = 1
+fileScroll.BorderSizePixel = 0
+fileScroll.ScrollBarThickness = 4
+fileScroll.ScrollBarImageColor3 = CONFIG.colors.cyan
+fileScroll.Parent = sidebar
+
+local fileListLayout = Instance.new("UIListLayout")
+fileListLayout.Padding = UDim.new(0, 5)
+fileListLayout.Parent = fileScroll
+
+-- Create File Tree
+local yPos = 0
+for folderName, files in pairs(fileTree) do
+	local folderBtn = Instance.new("TextButton")
+	folderBtn.Size = UDim2.new(1, -10, 0, 35)
+	folderBtn.BackgroundColor3 = CONFIG.colors.panel
+	folderBtn.BackgroundTransparency = 0.5
+	folderBtn.BorderSizePixel = 0
+	folderBtn.Text = (state.expandedFolders[folderName] and "▼" or "▶") .. " 📁 " .. folderName
+	folderBtn.TextColor3 = CONFIG.colors.text
+	folderBtn.Font = Enum.Font.Gotham
+	folderBtn.TextSize = 14
+	folderBtn.TextXAlignment = Enum.TextXAlignment.Left
+	folderBtn.Parent = fileScroll
+	createCorner(8).Parent = folderBtn
+	
+	local fileContainer = Instance.new("Frame")
+	fileContainer.Size = UDim2.new(1, -10, 0, 0)
+	fileContainer.BackgroundTransparency = 1
+	fileContainer.Visible = state.expandedFolders[folderName]
+	fileContainer.Parent = fileScroll
+	
+	local fileLayout = Instance.new("UIListLayout")
+	fileLayout.Padding = UDim.new(0, 3)
+	fileLayout.Parent = fileContainer
+	
+	for i, fileName in ipairs(files) do
+		local fileBtn = Instance.new("TextButton")
+		fileBtn.Size = UDim2.new(1, -20, 0, 30)
+		fileBtn.Position = UDim2.new(0, 20, 0, 0)
+		fileBtn.BackgroundColor3 = state.selectedFile == fileName and CONFIG.colors.cyan or CONFIG.colors.panel
+		fileBtn.BackgroundTransparency = state.selectedFile == fileName and 0.8 or 0.7
+		fileBtn.BorderSizePixel = 0
+		fileBtn.Text = "  📄 " .. fileName
+		fileBtn.TextColor3 = state.selectedFile == fileName and CONFIG.colors.cyan or CONFIG.colors.text
+		fileBtn.Font = Enum.Font.Gotham
+		fileBtn.TextSize = 12
+		fileBtn.TextXAlignment = Enum.TextXAlignment.Left
+		fileBtn.Parent = fileContainer
+		createCorner(6).Parent = fileBtn
+		
+		fileBtn.MouseButton1Click:Connect(function()
+			state.selectedFile = fileName
+			-- Refresh UI (simplified)
+			fileBtn.BackgroundColor3 = CONFIG.colors.cyan
+			fileBtn.BackgroundTransparency = 0.8
+		end)
+	end
+	
+	fileContainer.Size = UDim2.new(1, -10, 0, #files * 33)
+	
+	folderBtn.MouseButton1Click:Connect(function()
+		state.expandedFolders[folderName] = not state.expandedFolders[folderName]
+		fileContainer.Visible = state.expandedFolders[folderName]
+		folderBtn.Text = (state.expandedFolders[folderName] and "▼" or "▶") .. " 📁 " .. folderName
+	end)
+end
+
+fileScroll.CanvasSize = UDim2.new(0, 0, 0, fileListLayout.AbsoluteContentSize.Y)
+
+-- Code Editor Panel
+local editorPanel = Instance.new("Frame")
+editorPanel.Size = UDim2.new(1, -600, 1, -260)
+editorPanel.Position = UDim2.new(0, 290, 0, 110)
+editorPanel.BackgroundColor3 = CONFIG.colors.panel
+editorPanel.BackgroundTransparency = 0.2
+editorPanel.BorderSizePixel = 0
+editorPanel.Parent = mainFrame
+createCorner(16).Parent = editorPanel
+createStroke(CONFIG.colors.border, 1, 0.8).Parent = editorPanel
+
+-- Editor Header
 local editorHeader = Instance.new("Frame")
-editorHeader.Size = UDim2.new(1, 0, 0, 35)
-editorHeader.BackgroundColor3 = Color3.fromRGB(20, 30, 48)
+editorHeader.Size = UDim2.new(1, 0, 0, 40)
+editorHeader.BackgroundColor3 = CONFIG.colors.bg
+editorHeader.BackgroundTransparency = 0.5
 editorHeader.BorderSizePixel = 0
-editorHeader.Parent = editorArea
+editorHeader.Parent = editorPanel
 
-local tabButton = Instance.new("TextLabel")
-tabButton.Size = UDim2.new(0, 120, 1, 0)
-tabButton.Position = UDim2.new(0, 10, 0, 0)
-tabButton.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
-tabButton.BackgroundTransparency = 0.8
-tabButton.BorderSizePixel = 0
-tabButton.Text = "game.lua"
-tabButton.TextColor3 = Color3.fromRGB(240, 250, 255)
-tabButton.TextSize = 12
-tabButton.Font = Enum.Font.Code
-tabButton.Parent = editorHeader
+local editorTitle = Instance.new("TextLabel")
+editorTitle.Size = UDim2.new(1, -20, 1, 0)
+editorTitle.Position = UDim2.new(0, 10, 0, 0)
+editorTitle.BackgroundTransparency = 1
+editorTitle.Text = "📄 " .. state.selectedFile
+editorTitle.TextColor3 = CONFIG.colors.text
+editorTitle.Font = Enum.Font.Gotham
+editorTitle.TextSize = 14
+editorTitle.TextXAlignment = Enum.TextXAlignment.Left
+editorTitle.Parent = editorHeader
 
-local tabCorner = Instance.new("UICorner")
-tabCorner.CornerRadius = UDim.new(0, 4)
-tabCorner.Parent = tabButton
+-- Code Text Area
+local codeScroll = Instance.new("ScrollingFrame")
+codeScroll.Size = UDim2.new(1, -20, 1, -60)
+codeScroll.Position = UDim2.new(0, 10, 0, 50)
+codeScroll.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+codeScroll.BackgroundTransparency = 0.6
+codeScroll.BorderSizePixel = 0
+codeScroll.ScrollBarThickness = 6
+codeScroll.ScrollBarImageColor3 = CONFIG.colors.cyan
+codeScroll.Parent = editorPanel
+createCorner(8).Parent = codeScroll
 
--- コードエディタ（テキストボックス）
-local codeEditor = Instance.new("ScrollingFrame")
-codeEditor.Name = "CodeEditor"
-codeEditor.Size = UDim2.new(1, 0, 1, -35)
-codeEditor.Position = UDim2.new(0, 0, 0, 35)
-codeEditor.BackgroundColor3 = Color3.fromRGB(10, 15, 30)
-codeEditor.BorderSizePixel = 0
-codeEditor.ScrollBarThickness = 6
-codeEditor.ScrollBarImageColor3 = Color3.fromRGB(6, 182, 212)
-codeEditor.CanvasSize = UDim2.new(0, 0, 0, 600)
-codeEditor.Parent = editorArea
-
--- コード表示用テキストラベル
 local codeText = Instance.new("TextLabel")
-codeText.Size = UDim2.new(1, -20, 0, 600)
-codeText.Position = UDim2.new(0, 10, 0, 10)
+codeText.Size = UDim2.new(1, -50, 0, 1000)
+codeText.Position = UDim2.new(0, 40, 0, 0)
 codeText.BackgroundTransparency = 1
-codeText.Text = [[function initialize()
-  testing_rtb_lnsB({
-    rotate26_tetPtk = 1
-  })
-  sosinsl()
-end
-
-function update(deltaTime)
-  if player.isMoving then
-    calculatePosition()
-    updateAnimation()
-  end
-end
-
-function calculatePosition()
-  local newPos = Vector3.new()
-  return newPos
-end]]
-codeText.TextColor3 = Color3.fromRGB(163, 230, 250)
-codeText.TextSize = 13
+codeText.Text = codeExample
+codeText.TextColor3 = CONFIG.colors.text
 codeText.Font = Enum.Font.Code
+codeText.TextSize = 14
 codeText.TextXAlignment = Enum.TextXAlignment.Left
 codeText.TextYAlignment = Enum.TextYAlignment.Top
-codeText.Parent = codeEditor
+codeText.Parent = codeScroll
 
--- 行番号表示
+-- Line Numbers
 local lineNumbers = Instance.new("TextLabel")
-lineNumbers.Size = UDim2.new(0, 40, 1, 0)
-lineNumbers.BackgroundColor3 = Color3.fromRGB(8, 12, 25)
-lineNumbers.BorderSizePixel = 0
-lineNumbers.Text = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18"
-lineNumbers.TextColor3 = Color3.fromRGB(70, 90, 120)
-lineNumbers.TextSize = 12
+lineNumbers.Size = UDim2.new(0, 35, 1, 0)
+lineNumbers.BackgroundTransparency = 1
+lineNumbers.Text = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+lineNumbers.TextColor3 = Color3.fromRGB(100, 100, 100)
 lineNumbers.Font = Enum.Font.Code
+lineNumbers.TextSize = 14
 lineNumbers.TextXAlignment = Enum.TextXAlignment.Right
 lineNumbers.TextYAlignment = Enum.TextYAlignment.Top
-lineNumbers.Parent = editorArea
+lineNumbers.Parent = codeScroll
 
-local lineNumPadding = Instance.new("UIPadding")
-lineNumPadding.PaddingRight = UDim.new(0, 8)
-lineNumPadding.PaddingTop = UDim.new(0, 45)
-lineNumPadding.Parent = lineNumbers
+-- Console Panel (Right)
+local consolePanel = Instance.new("Frame")
+consolePanel.Size = UDim2.new(0, 300, 1, -180)
+consolePanel.Position = UDim2.new(1, -320, 0, 110)
+consolePanel.BackgroundColor3 = CONFIG.colors.panel
+consolePanel.BackgroundTransparency = 0.2
+consolePanel.BorderSizePixel = 0
+consolePanel.Parent = mainFrame
+createCorner(16).Parent = consolePanel
+createStroke(CONFIG.colors.border, 1, 0.8).Parent = consolePanel
 
--- 右サイドバー（コンソール）
-local rightSidebar = Instance.new("Frame")
-rightSidebar.Name = "RightSidebar"
-rightSidebar.Size = UDim2.new(0, 320, 1, -50)
-rightSidebar.Position = UDim2.new(1, -320, 0, 50)
-rightSidebar.BackgroundColor3 = Color3.fromRGB(20, 30, 48)
-rightSidebar.BorderSizePixel = 0
-rightSidebar.Parent = mainFrame
+local consoleTitle = Instance.new("TextLabel")
+consoleTitle.Size = UDim2.new(1, -20, 0, 40)
+consoleTitle.Position = UDim2.new(0, 10, 0, 10)
+consoleTitle.BackgroundTransparency = 1
+consoleTitle.Text = "💻 CONSOLE"
+consoleTitle.TextColor3 = CONFIG.colors.cyan
+consoleTitle.Font = Enum.Font.GothamBold
+consoleTitle.TextSize = 16
+consoleTitle.TextXAlignment = Enum.TextXAlignment.Left
+consoleTitle.Parent = consolePanel
 
-local rightStroke = Instance.new("UIStroke")
-rightStroke.Color = Color3.fromRGB(6, 182, 212)
-rightStroke.Thickness = 1
-rightStroke.Transparency = 0.7
-rightStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-rightStroke.Parent = rightSidebar
-
--- コンソールヘッダー
-local consoleHeader = Instance.new("TextLabel")
-consoleHeader.Size = UDim2.new(1, 0, 0, 40)
-consoleHeader.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
-consoleHeader.BorderSizePixel = 0
-consoleHeader.Text = "⚡ Console"
-consoleHeader.TextColor3 = Color3.fromRGB(103, 232, 249)
-consoleHeader.TextSize = 14
-consoleHeader.Font = Enum.Font.GothamBold
-consoleHeader.TextXAlignment = Enum.TextXAlignment.Left
-consoleHeader.Parent = rightSidebar
-
-local consolePadding = Instance.new("UIPadding")
-consolePadding.PaddingLeft = UDim.new(0, 15)
-consolePadding.Parent = consoleHeader
-
--- コンソール出力エリア
-local consoleOutput = Instance.new("ScrollingFrame")
-consoleOutput.Name = "ConsoleOutput"
-consoleOutput.Size = UDim2.new(1, -20, 1, -180)
-consoleOutput.Position = UDim2.new(0, 10, 0, 50)
-consoleOutput.BackgroundTransparency = 1
-consoleOutput.BorderSizePixel = 0
-consoleOutput.ScrollBarThickness = 4
-consoleOutput.ScrollBarImageColor3 = Color3.fromRGB(6, 182, 212)
-consoleOutput.CanvasSize = UDim2.new(0, 0, 0, 300)
-consoleOutput.Parent = rightSidebar
+local consoleScroll = Instance.new("ScrollingFrame")
+consoleScroll.Size = UDim2.new(1, -20, 1, -60)
+consoleScroll.Position = UDim2.new(0, 10, 0, 50)
+consoleScroll.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+consoleScroll.BackgroundTransparency = 0.6
+consoleScroll.BorderSizePixel = 0
+consoleScroll.ScrollBarThickness = 4
+consoleScroll.ScrollBarImageColor3 = CONFIG.colors.cyan
+consoleScroll.Parent = consolePanel
+createCorner(8).Parent = consoleScroll
 
 local consoleLayout = Instance.new("UIListLayout")
 consoleLayout.Padding = UDim.new(0, 5)
-consoleLayout.Parent = consoleOutput
+consoleLayout.Parent = consoleScroll
 
--- コンソールログ作成関数
-local function createLog(message, logType)
-	local logFrame = Instance.new("Frame")
-	logFrame.Size = UDim2.new(1, 0, 0, 50)
-	logFrame.BorderSizePixel = 0
-	logFrame.Parent = consoleOutput
-	
-	local logColor, strokeColor
-	if logType == "error" then
-		logColor = Color3.fromRGB(40, 10, 10)
-		strokeColor = Color3.fromRGB(220, 38, 38)
-	elseif logType == "warning" then
-		logColor = Color3.fromRGB(40, 35, 10)
-		strokeColor = Color3.fromRGB(234, 179, 8)
-	elseif logType == "success" then
-		logColor = Color3.fromRGB(10, 40, 20)
-		strokeColor = Color3.fromRGB(34, 197, 94)
-	else
-		logColor = Color3.fromRGB(10, 25, 40)
-		strokeColor = Color3.fromRGB(6, 182, 212)
+-- Add Console Lines
+local function addConsoleLine(lineType, text)
+	local lineColor = CONFIG.colors.text
+	if lineType == "error" then lineColor = CONFIG.colors.error
+	elseif lineType == "warning" then lineColor = CONFIG.colors.warning
+	elseif lineType == "success" then lineColor = CONFIG.colors.success
 	end
 	
-	logFrame.BackgroundColor3 = logColor
+	local line = Instance.new("TextLabel")
+	line.Size = UDim2.new(1, -10, 0, 25)
+	line.BackgroundTransparency = 1
+	line.Text = text
+	line.TextColor3 = lineColor
+	line.Font = Enum.Font.Code
+	line.TextSize = 12
+	line.TextXAlignment = Enum.TextXAlignment.Left
+	line.Parent = consoleScroll
 	
-	local logCorner = Instance.new("UICorner")
-	logCorner.CornerRadius = UDim.new(0, 4)
-	logCorner.Parent = logFrame
-	
-	local logStroke = Instance.new("UIStroke")
-	logStroke.Color = strokeColor
-	logStroke.Thickness = 1
-	logStroke.Transparency = 0.5
-	logStroke.Parent = logFrame
-	
-	local logText = Instance.new("TextLabel")
-	logText.Size = UDim2.new(1, -10, 1, -10)
-	logText.Position = UDim2.new(0, 5, 0, 5)
-	logText.BackgroundTransparency = 1
-	logText.Text = message
-	logText.TextColor3 = strokeColor
-	logText.TextSize = 11
-	logText.Font = Enum.Font.Code
-	logText.TextXAlignment = Enum.TextXAlignment.Left
-	logText.TextYAlignment = Enum.TextYAlignment.Top
-	logText.TextWrapped = true
-	logText.Parent = logFrame
-	
-	return logFrame
+	consoleScroll.CanvasSize = UDim2.new(0, 0, 0, consoleLayout.AbsoluteContentSize.Y)
 end
 
--- サンプルログ追加
-createLog("[SUCCESS] Script loaded successfully", "success")
-createLog("[INFO] Connecting to game server...", "info")
-createLog("[ERROR] Nil value at line 23", "error")
-createLog("[WARNING] Deprecated function usage", "warning")
+-- Initial console lines
+for _, line in ipairs(state.consoleLines) do
+	addConsoleLine(line.type, line.text)
+end
 
--- コントロールパネル
+-- Bottom Controls
 local controlPanel = Instance.new("Frame")
-controlPanel.Size = UDim2.new(1, -20, 0, 120)
-controlPanel.Position = UDim2.new(0, 10, 1, -130)
-controlPanel.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+controlPanel.Size = UDim2.new(1, -600, 0, 60)
+controlPanel.Position = UDim2.new(0, 290, 1, -80)
+controlPanel.BackgroundColor3 = CONFIG.colors.panel
+controlPanel.BackgroundTransparency = 0.2
 controlPanel.BorderSizePixel = 0
-controlPanel.Parent = rightSidebar
+controlPanel.Parent = mainFrame
+createCorner(16).Parent = controlPanel
+createStroke(CONFIG.colors.border, 1, 0.8).Parent = controlPanel
 
-local controlCorner = Instance.new("UICorner")
-controlCorner.CornerRadius = UDim.new(0, 8)
-controlCorner.Parent = controlPanel
-
--- Runボタン
-local runButton = Instance.new("TextButton")
-runButton.Size = UDim2.new(0.48, 0, 0, 40)
-runButton.Position = UDim2.new(0.02, 0, 0.05, 0)
-runButton.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
-runButton.BorderSizePixel = 0
-runButton.Text = "▶ Run"
-runButton.TextColor3 = Color3.fromRGB(15, 23, 42)
-runButton.TextSize = 14
-runButton.Font = Enum.Font.GothamBold
-runButton.Parent = controlPanel
-
-local runCorner = Instance.new("UICorner")
-runCorner.CornerRadius = UDim.new(0, 6)
-runCorner.Parent = runButton
-
--- グロー効果
-local runStroke = Instance.new("UIStroke")
-runStroke.Color = Color3.fromRGB(6, 182, 212)
-runStroke.Thickness = 0
-runStroke.Transparency = 0.5
-runStroke.Parent = runButton
-
--- Debugボタン
-local debugButton = Instance.new("TextButton")
-debugButton.Size = UDim2.new(0.48, 0, 0, 40)
-debugButton.Position = UDim2.new(0.5, 0, 0.05, 0)
-debugButton.BackgroundColor3 = Color3.fromRGB(168, 85, 247)
-debugButton.BackgroundTransparency = 0.7
-debugButton.BorderSizePixel = 0
-debugButton.Text = "🐛 Debug"
-debugButton.TextColor3 = Color3.fromRGB(220, 180, 255)
-debugButton.TextSize = 14
-debugButton.Font = Enum.Font.GothamBold
-debugButton.Parent = controlPanel
-
-local debugCorner = Instance.new("UICorner")
-debugCorner.CornerRadius = UDim.new(0, 6)
-debugCorner.Parent = debugButton
-
-local debugStroke = Instance.new("UIStroke")
-debugStroke.Color = Color3.fromRGB(168, 85, 247)
-debugStroke.Thickness = 1
-debugStroke.Transparency = 0.5
-debugStroke.Parent = debugButton
-
--- UIスケールラベル
+-- UI Scale Slider
 local scaleLabel = Instance.new("TextLabel")
-scaleLabel.Size = UDim2.new(0.6, 0, 0, 20)
-scaleLabel.Position = UDim2.new(0.02, 0, 0.5, 0)
+scaleLabel.Size = UDim2.new(0, 80, 1, 0)
+scaleLabel.Position = UDim2.new(0, 20, 0, 0)
 scaleLabel.BackgroundTransparency = 1
-scaleLabel.Text = "UI Scale: 100%"
-scaleLabel.TextColor3 = Color3.fromRGB(163, 230, 250)
-scaleLabel.TextSize = 11
+scaleLabel.Text = "UI Scale:"
+scaleLabel.TextColor3 = CONFIG.colors.text
 scaleLabel.Font = Enum.Font.Gotham
+scaleLabel.TextSize = 12
 scaleLabel.TextXAlignment = Enum.TextXAlignment.Left
 scaleLabel.Parent = controlPanel
 
--- Auto-Save トグル
+local scaleValue = Instance.new("TextLabel")
+scaleValue.Size = UDim2.new(0, 50, 1, 0)
+scaleValue.Position = UDim2.new(0, 250, 0, 0)
+scaleValue.BackgroundTransparency = 1
+scaleValue.Text = "100%"
+scaleValue.TextColor3 = CONFIG.colors.cyan
+scaleValue.Font = Enum.Font.GothamBold
+scaleValue.TextSize = 12
+scaleValue.Parent = controlPanel
+
+-- Auto-Save Toggle
 local autoSaveLabel = Instance.new("TextLabel")
-autoSaveLabel.Size = UDim2.new(0.5, 0, 0, 20)
-autoSaveLabel.Position = UDim2.new(0.02, 0, 0.75, 0)
+autoSaveLabel.Size = UDim2.new(0, 80, 1, 0)
+autoSaveLabel.Position = UDim2.new(0, 320, 0, 0)
 autoSaveLabel.BackgroundTransparency = 1
-autoSaveLabel.Text = "Auto-Save"
-autoSaveLabel.TextColor3 = Color3.fromRGB(163, 230, 250)
-autoSaveLabel.TextSize = 11
+autoSaveLabel.Text = "Auto-Save:"
+autoSaveLabel.TextColor3 = CONFIG.colors.text
 autoSaveLabel.Font = Enum.Font.Gotham
+autoSaveLabel.TextSize = 12
 autoSaveLabel.TextXAlignment = Enum.TextXAlignment.Left
 autoSaveLabel.Parent = controlPanel
 
-local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0, 40, 0, 20)
-toggleButton.Position = UDim2.new(0.55, 0, 0.75, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
-toggleButton.BorderSizePixel = 0
-toggleButton.Text = ""
-toggleButton.Parent = controlPanel
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 50, 0, 24)
+toggleBtn.Position = UDim2.new(0, 410, 0.5, -12)
+toggleBtn.BackgroundColor3 = CONFIG.colors.success
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Text = ""
+toggleBtn.Parent = controlPanel
+createCorner(12).Parent = toggleBtn
 
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(1, 0)
-toggleCorner.Parent = toggleButton
+local toggleIndicator = Instance.new("Frame")
+toggleIndicator.Size = UDim2.new(0, 20, 0, 20)
+toggleIndicator.Position = UDim2.new(1, -22, 0.5, -10)
+toggleIndicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+toggleIndicator.BorderSizePixel = 0
+toggleIndicator.Parent = toggleBtn
+createCorner(10).Parent = toggleIndicator
 
-local toggleCircle = Instance.new("Frame")
-toggleCircle.Size = UDim2.new(0, 16, 0, 16)
-toggleCircle.Position = UDim2.new(0, 22, 0.5, -8)
-toggleCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-toggleCircle.BorderSizePixel = 0
-toggleCircle.Parent = toggleButton
-
-local circleCorner = Instance.new("UICorner")
-circleCorner.CornerRadius = UDim.new(1, 0)
-circleCorner.Parent = toggleCircle
-
--- トグル機能
-local isToggled = true
-toggleButton.MouseButton1Click:Connect(function()
-	isToggled = not isToggled
-	local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad)
-	if isToggled then
-		local tween = TweenService:Create(toggleCircle, tweenInfo, {Position = UDim2.new(0, 22, 0.5, -8)})
-		tween:Play()
-		toggleButton.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
+toggleBtn.MouseButton1Click:Connect(function()
+	CONFIG.autoSave = not CONFIG.autoSave
+	if CONFIG.autoSave then
+		toggleBtn.BackgroundColor3 = CONFIG.colors.success
+		TweenService:Create(toggleIndicator, TweenInfo.new(0.2), {Position = UDim2.new(1, -22, 0.5, -10)}):Play()
 	else
-		local tween = TweenService:Create(toggleCircle, tweenInfo, {Position = UDim2.new(0, 2, 0.5, -8)})
-		tween:Play()
-		toggleButton.BackgroundColor3 = Color3.fromRGB(71, 85, 105)
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(75, 85, 99)
+		TweenService:Create(toggleIndicator, TweenInfo.new(0.2), {Position = UDim2.new(0, 2, 0.5, -10)}):Play()
 	end
 end)
 
--- ボタンホバーエフェクト
-runButton.MouseEnter:Connect(function()
-	runButton.BackgroundColor3 = Color3.fromRGB(14, 165, 233)
+-- Button Events
+runBtn.MouseButton1Click:Connect(function()
+	addConsoleLine("info", "> Running script...")
+	wait(0.5)
+	addConsoleLine("success", "✓ Script executed successfully")
 end)
 
-runButton.MouseLeave:Connect(function()
-	runButton.BackgroundColor3 = Color3.fromRGB(6, 182, 212)
+debugBtn.MouseButton1Click:Connect(function()
+	addConsoleLine("info", "> Debug mode activated")
+	addConsoleLine("warning", "⚠ Breakpoint set at line 12")
 end)
 
-debugButton.MouseEnter:Connect(function()
-	debugButton.BackgroundTransparency = 0.5
+stopBtn.MouseButton1Click:Connect(function()
+	addConsoleLine("error", "■ Script stopped")
 end)
 
-debugButton.MouseLeave:Connect(function()
-	debugButton.BackgroundTransparency = 0.7
-end)
-
--- ドラッグ可能にする
-local dragging = false
-local dragInput, mousePos, framePos
-
-local function update(input)
-	local delta = input.Position - mousePos
-	mainFrame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
-end
-
-titleBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		mousePos = input.Position
-		framePos = mainFrame.Position
-		
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
-end)
-
-titleBar.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		dragInput = input
-	end
-end)
-
-game:GetService("UserInputService").InputChanged:Connect(function(input)
-	if input == dragInput and dragging then
-		update(input)
-	end
-end)
-
-print("✨ Lua Scripting Wizard's Forge loaded successfully!")
+print("LuaForge IDE loaded successfully!")
