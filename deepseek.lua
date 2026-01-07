@@ -1,933 +1,1116 @@
--- 超神関数数式: UI System Module
--- ファイル名: UIGodFunctions.lua (ModuleScript)
+-- UIフレームワーク
+-- 作成者: AI Assistant
+-- 場所: LocalScript (StarterGui or StarterPlayerScripts)
 
-local UIGodFunctions = {}
-UIGodFunctions.__index = UIGodFunctions
-
--- サービス
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local GuiService = game:GetService("GuiService")
-local ContextActionService = game:GetService("ContextActionService")
-local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
-local HapticService = game:GetService("HapticService")
-local ContentProvider = game:GetService("ContentProvider")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
 -- 設定
-local DEFAULT_TWEEN_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local SAFE_AREA_OFFSET = 0.05
-local MOBILE_BUTTON_SIZE = 50
-local MIN_TOUCH_SIZE = 44 -- 最小タッチサイズ
-
--- 色定数
-local COLOR = {
-    PRIMARY = Color3.fromRGB(0, 120, 215),
-    SECONDARY = Color3.fromRGB(100, 100, 100),
-    SUCCESS = Color3.fromRGB(46, 204, 113),
-    ERROR = Color3.fromRGB(231, 76, 60),
-    WARNING = Color3.fromRGB(241, 196, 15),
-    INFO = Color3.fromRGB(52, 152, 219),
-    DARK = Color3.fromRGB(30, 30, 30),
-    LIGHT = Color3.fromRGB(245, 245, 245)
+local UI_CONFIG = {
+    DRAG_SENSITIVITY = 1.2,
+    MINIMIZE_ANIMATION_DURATION = 0.3,
+    MAXIMIZE_ANIMATION_DURATION = 0.3,
+    DRAG_ANIMATION_DURATION = 0.15,
+    SNAP_THRESHOLD = 20,
+    INERTIA_DECAY = 0.9,
+    SAFE_AREA_PADDING = 10,
+    RESPONSIVE_BREAKPOINTS = {
+        MOBILE = 500,
+        TABLET = 800
+    }
 }
 
---[[
-    ① 画面構成・レイアウト
-]]--
-function UIGodFunctions.createScreenGui(name, parent)
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = name
-    screenGui.Parent = parent or Players.LocalPlayer:WaitForChild("PlayerGui")
-    screenGui.DisplayOrder = 10
-    screenGui.ResetOnSpawn = false
+-- UI管理クラス
+local UIManager = {}
+UIManager.__index = UIManager
+UIManager.Instances = {}
+
+function UIManager.new(name)
+    local self = setmetatable({}, UIManager)
+    self.Name = name or "UI_" .. tick()
+    self.ScreenGui = nil
+    self.MainFrame = nil
+    self.IsDragging = false
+    self.IsMinimized = false
+    self.DragStartPosition = nil
+    self.FrameStartPosition = nil
+    self.DragVelocity = Vector2.new(0, 0)
+    self.LastDragPosition = nil
+    self.LastDragTime = nil
+    self.MinimizeType = "scale"
+    self.OriginalSize = nil
+    self.OriginalPosition = nil
+    self.OriginalProperties = {}
+    self.ActiveTweens = {}
+    self.Events = {}
     
-    -- SafeArea対応
-    if RunService:IsStudio() == false then
-        screenGui.SafeAreaCompatibility = Enum.SafeAreaCompatibility.FullscreenExtension
-    end
-    
-    return screenGui
+    table.insert(UIManager.Instances, self)
+    return self
 end
 
-function UIGodFunctions.createMainFrame(screenGui, size, position)
-    local frame = Instance.new("Frame")
-    frame.Name = "MainFrame"
-    frame.Size = size or UDim2.new(1, 0, 1, 0)
-    frame.Position = position or UDim2.new(0, 0, 0, 0)
-    frame.BackgroundColor3 = COLOR.DARK
-    frame.BackgroundTransparency = 0.1
-    frame.Parent = screenGui
+-- 基本UI作成
+function UIManager:CreateBaseUI()
+    -- ScreenGui
+    self.ScreenGui = Instance.new("ScreenGui")
+    self.ScreenGui.Name = self.Name
+    self.ScreenGui.ResetOnSpawn = false
+    self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    self.ScreenGui.DisplayOrder = 10
+    self.ScreenGui.Parent = playerGui
     
-    -- UI装飾
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 8)
-    uiCorner.Parent = frame
+    -- メインフレーム
+    self.MainFrame = Instance.new("Frame")
+    self.MainFrame.Name = "MainFrame"
+    self.MainFrame.Size = UDim2.new(0, 400, 0, 300)
+    self.MainFrame.Position = UDim2.new(0.5, -200, 0.5, -150)
+    self.MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    self.MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    self.MainFrame.BackgroundTransparency = 0.1
+    self.MainFrame.BorderSizePixel = 0
     
-    local uiStroke = Instance.new("UIStroke")
-    uiStroke.Color = COLOR.PRIMARY
-    uiStroke.Thickness = 2
-    uiStroke.Parent = frame
+    -- 角丸
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = self.MainFrame
     
-    local uiPadding = Instance.new("UIPadding")
-    uiPadding.PaddingLeft = UDim.new(0, 10)
-    uiPadding.PaddingRight = UDim.new(0, 10)
-    uiPadding.PaddingTop = UDim.new(0, 10)
-    uiPadding.PaddingBottom = UDim.new(0, 10)
-    uiPadding.Parent = frame
+    -- 枠線
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(100, 150, 255)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.3
+    stroke.Parent = self.MainFrame
     
-    -- 解像度対応
-    local uiScale = Instance.new("UIScale")
-    uiScale.Parent = frame
+    -- パディング
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 8)
+    padding.PaddingLeft = UDim.new(0, 8)
+    padding.PaddingRight = UDim.new(0, 8)
+    padding.Parent = self.MainFrame
     
-    -- アスペクト比制約
-    local aspectRatio = Instance.new("UIAspectRatioConstraint")
-    aspectRatio.AspectRatio = 1.777 -- 16:9
-    aspectRatio.DominantAxis = Enum.DominantAxis.Width
-    aspectRatio.Parent = frame
+    -- グラデーション
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 60)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 45))
+    })
+    gradient.Rotation = 45
+    gradient.Parent = self.MainFrame
     
-    -- ZIndex管理用
-    frame:SetAttribute("ZIndex", 1)
+    -- タイトルバー
+    self.TitleBar = Instance.new("Frame")
+    self.TitleBar.Name = "TitleBar"
+    self.TitleBar.Size = UDim2.new(1, 0, 0, 40)
+    self.TitleBar.Position = UDim2.new(0, 0, 0, 0)
+    self.TitleBar.BackgroundTransparency = 1
+    self.TitleBar.Parent = self.MainFrame
     
-    return frame
+    -- タイトルバー角丸
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 8)
+    titleCorner.Parent = self.TitleBar
+    
+    -- タイトルテキスト
+    self.TitleText = Instance.new("TextLabel")
+    self.TitleText.Name = "TitleText"
+    self.TitleText.Size = UDim2.new(0.7, 0, 1, 0)
+    self.TitleText.Position = UDim2.new(0, 10, 0, 0)
+    self.TitleText.BackgroundTransparency = 1
+    self.TitleText.Text = self.Name
+    self.TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    self.TitleText.TextSize = 18
+    self.TitleText.Font = Enum.Font.GothamBold
+    self.TitleText.TextXAlignment = Enum.TextXAlignment.Left
+    self.TitleText.Parent = self.TitleBar
+    
+    -- コントロールボタンコンテナ
+    self.ControlButtons = Instance.new("Frame")
+    self.ControlButtons.Name = "ControlButtons"
+    self.ControlButtons.Size = UDim2.new(0.3, 0, 1, 0)
+    self.ControlButtons.Position = UDim2.new(0.7, 0, 0, 0)
+    self.ControlButtons.BackgroundTransparency = 1
+    self.ControlButtons.Parent = self.TitleBar
+    
+    -- 最小化ボタン
+    self.MinimizeButton = self:CreateButton("MinimizeButton", UDim2.new(0, 30, 0, 30), UDim2.new(0, 5, 0.5, -15), "−")
+    self.MinimizeButton.Parent = self.ControlButtons
+    self.MinimizeButton.ZIndex = 5
+    
+    -- 閉じるボタン
+    self.CloseButton = self:CreateButton("CloseButton", UDim2.new(0, 30, 0, 30), UDim2.new(0, 40, 0.5, -15), "×")
+    self.CloseButton.Parent = self.ControlButtons
+    self.CloseButton.ZIndex = 5
+    
+    -- コンテンツフレーム
+    self.ContentFrame = Instance.new("Frame")
+    self.ContentFrame.Name = "ContentFrame"
+    self.ContentFrame.Size = UDim2.new(1, -16, 1, -56)
+    self.ContentFrame.Position = UDim2.new(0, 8, 0, 48)
+    self.ContentFrame.BackgroundTransparency = 1
+    self.ContentFrame.Parent = self.MainFrame
+    
+    -- 最小化時のアイコン
+    self.MinimizedIcon = Instance.new("ImageButton")
+    self.MinimizedIcon.Name = "MinimizedIcon"
+    self.MinimizedIcon.Size = UDim2.new(0, 60, 0, 60)
+    self.MinimizedIcon.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    self.MinimizedIcon.BackgroundTransparency = 0.2
+    self.MinimizedIcon.Image = ""
+    self.MinimizedIcon.Visible = false
+    self.MinimizedIcon.ZIndex = 20
+    
+    local iconCorner = Instance.new("UICorner")
+    iconCorner.CornerRadius = UDim.new(0, 8)
+    iconCorner.Parent = self.MinimizedIcon
+    
+    local iconStroke = Instance.new("UIStroke")
+    iconStroke.Color = Color3.fromRGB(100, 150, 255)
+    iconStroke.Thickness = 1
+    iconStroke.Parent = self.MinimizedIcon
+    
+    self.MinimizedIcon.Parent = self.ScreenGui
+    
+    -- 元のプロパティを保存
+    self.OriginalSize = self.MainFrame.Size
+    self.OriginalPosition = self.MainFrame.Position
+    self.OriginalProperties.BackgroundTransparency = self.MainFrame.BackgroundTransparency
+    self.OriginalProperties.UIStrokeThickness = stroke.Thickness
+    self.OriginalProperties.UIStrokeColor = stroke.Color
+    
+    self.MainFrame.Parent = self.ScreenGui
+    
+    return self
 end
 
-function UIGodFunctions.applySafeArea(frame)
-    if UserInputService.TouchEnabled then
-        local safeArea = GuiService:GetSafeAreaInsets()
-        
-        frame.AnchorPoint = Vector2.new(0.5, 0.5)
-        frame.Position = UDim2.new(0.5, 0, 0.5, 0)
-        frame.Size = UDim2.new(
-            1 - safeArea.X * 2,
-            -safeArea.X * 2,
-            1 - safeArea.Y * 2,
-            -safeArea.Y * 2
-        )
-    end
-end
-
---[[
-    ② ナビゲーション系
-]]--
-function UIGodFunctions.createNavigationBar(parent, tabs)
-    local navBar = Instance.new("Frame")
-    navBar.Name = "NavigationBar"
-    navBar.Size = UDim2.new(1, 0, 0, 60)
-    navBar.BackgroundTransparency = 1
-    navBar.Parent = parent
+-- ボタン作成ヘルパー関数
+function UIManager:CreateButton(name, size, position, text)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = size
+    button.Position = position
+    button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    button.BackgroundTransparency = 0.2
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 20
+    button.Font = Enum.Font.GothamBold
+    button.AutoButtonColor = false
     
-    local uiListLayout = Instance.new("UIListLayout")
-    uiListLayout.FillDirection = Enum.FillDirection.Horizontal
-    uiListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    uiListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    uiListLayout.Padding = UDim.new(0, 10)
-    uiListLayout.Parent = navBar
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
     
-    -- タブ作成
-    local tabButtons = {}
-    for i, tabData in ipairs(tabs) do
-        local tabButton = Instance.new("TextButton")
-        tabButton.Name = tabData.name .. "Tab"
-        tabButton.Size = UserInputService.TouchEnabled and UDim2.new(0, MOBILE_BUTTON_SIZE, 0, MOBILE_BUTTON_SIZE) or UDim2.new(0, 100, 0, 40)
-        tabButton.Text = tabData.text or tabData.name
-        tabButton.BackgroundColor3 = i == 1 and COLOR.PRIMARY or COLOR.SECONDARY
-        tabButton.TextColor3 = Color3.new(1, 1, 1)
-        tabButton.Font = Enum.Font.GothamSemibold
-        tabButton.Parent = navBar
-        
-        local uiCorner = Instance.new("UICorner")
-        uiCorner.CornerRadius = UDim.new(0, 8)
-        uiCorner.Parent = tabButton
-        
-        tabButton.MouseButton1Click:Connect(function()
-            UIGodFunctions.selectTab(tabButtons, tabButton, tabData.callback)
-        end)
-        
-        table.insert(tabButtons, {button = tabButton, data = tabData})
-    end
-    
-    return navBar, tabButtons
-end
-
-function UIGodFunctions.selectTab(allTabs, selectedTab, callback)
-    for _, tab in ipairs(allTabs) do
-        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tween = TweenService:Create(tab.button, tweenInfo, {
-            BackgroundColor3 = (tab.button == selectedTab) and COLOR.PRIMARY or COLOR.SECONDARY
-        })
-        tween:Play()
-    end
-    
-    if callback then
-        callback()
-    end
-end
-
---[[
-    ③ 操作・入力
-]]--
-function UIGodFunctions.createButton(parent, config)
-    local button = Instance.new(config.image and "ImageButton" or "TextButton")
-    button.Name = config.name or "Button"
-    button.Size = config.size or UDim2.new(0, 100, 0, 40)
-    button.Position = config.position or UDim2.new(0, 0, 0, 0)
-    button.BackgroundColor3 = config.bgColor or COLOR.PRIMARY
-    button.AutoButtonColor = config.autoButtonColor ~= false
-    
-    if config.image then
-        button.Image = config.image
-        button.ScaleType = config.scaleType or Enum.ScaleType.Stretch
-    else
-        button.Text = config.text or "Button"
-        button.TextColor3 = config.textColor or Color3.new(1, 1, 1)
-        button.Font = config.font or Enum.Font.GothamSemibold
-        button.TextSize = config.textSize or 14
-    end
-    
-    -- 基本装飾
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = config.cornerRadius or UDim.new(0, 8)
-    uiCorner.Parent = button
-    
-    local uiStroke = Instance.new("UIStroke")
-    uiStroke.Color = config.strokeColor or Color3.new(1, 1, 1)
-    uiStroke.Thickness = config.strokeThickness or 1
-    uiStroke.Parent = button
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(100, 150, 255)
+    stroke.Thickness = 1
+    stroke.Transparency = 0.5
+    stroke.Parent = button
     
     -- ホバーエフェクト
-    local originalColor = button.BackgroundColor3
-    local hoverColor = config.hoverColor or Color3.fromRGB(
-        math.min(255, originalColor.R * 255 * 1.2),
-        math.min(255, originalColor.G * 255 * 1.2),
-        math.min(255, originalColor.B * 255 * 1.2)
-    )
+    self:AddButtonEffects(button)
     
-    button.MouseEnter:Connect(function()
-        if config.disabled then return end
-        local tween = TweenService:Create(button, TweenInfo.new(0.2), {
-            BackgroundColor3 = hoverColor,
-            Size = button.Size + UDim2.new(0, 4, 0, 4)
-        })
-        tween:Play()
-    end)
-    
-    button.MouseLeave:Connect(function()
-        local tween = TweenService:Create(button, TweenInfo.new(0.2), {
-            BackgroundColor3 = originalColor,
-            Size = button.Size - UDim2.new(0, 4, 0, 4)
-        })
-        tween:Play()
-    end)
-    
-    -- クリックエフェクト
-    button.MouseButton1Down:Connect(function()
-        if config.disabled then return end
-        local tween = TweenService:Create(button, TweenInfo.new(0.1), {
-            BackgroundTransparency = 0.5,
-            Size = button.Size - UDim2.new(0, 2, 0, 2)
-        })
-        tween:Play()
-        
-        -- 振動フィードバック
-        if HapticService:IsVibrationSupported(Enum.UserInputType.Gamepad1) then
-            HapticService:SetMotor(Enum.UserInputType.Gamepad1, Enum.VibrationMotor.Large, 0.5)
-            task.wait(0.1)
-            HapticService:SetMotor(Enum.UserInputType.Gamepad1, Enum.VibrationMotor.Large, 0)
-        end
-    end)
-    
-    button.MouseButton1Up:Connect(function()
-        local tween = TweenService:Create(button, TweenInfo.new(0.1), {
-            BackgroundTransparency = 0,
-            Size = button.Size + UDim2.new(0, 2, 0, 2)
-        })
-        tween:Play()
-    end)
-    
-    -- クリックコールバック
-    if config.onClick then
-        button.MouseButton1Click:Connect(function()
-            if config.disabled then return end
-            config.onClick(button)
-        end)
-    end
-    
-    -- ショートカットキー
-    if config.hotkey then
-        ContextActionService:BindAction(config.name .. "Hotkey", function(actionName, inputState)
-            if inputState == Enum.UserInputState.Begin and config.onClick then
-                config.onClick(button)
-            end
-        end, false, config.hotkey)
-    end
-    
-    button.Parent = parent
     return button
 end
 
-function UIGodFunctions.createSlider(parent, config)
-    local sliderFrame = Instance.new("Frame")
-    sliderFrame.Name = config.name or "Slider"
-    sliderFrame.Size = config.size or UDim2.new(0.8, 0, 0, 40)
-    sliderFrame.BackgroundTransparency = 1
-    sliderFrame.Parent = parent
+-- ボタンエフェクト追加
+function UIManager:AddButtonEffects(button)
+    local originalSize = button.Size
+    local originalBackgroundColor = button.BackgroundColor3
+    local originalStrokeThickness = button.UIStroke.Thickness
     
-    local track = Instance.new("Frame")
-    track.Name = "Track"
-    track.Size = UDim2.new(1, 0, 0, 6)
-    track.Position = UDim2.new(0, 0, 0.5, -3)
-    track.BackgroundColor3 = COLOR.SECONDARY
-    track.Parent = sliderFrame
-    
-    local trackCorner = Instance.new("UICorner")
-    trackCorner.CornerRadius = UDim.new(1, 0)
-    trackCorner.Parent = track
-    
-    local fill = Instance.new("Frame")
-    fill.Name = "Fill"
-    fill.Size = UDim2.new((config.value or 0.5), 0, 1, 0)
-    fill.BackgroundColor3 = config.fillColor or COLOR.PRIMARY
-    fill.Parent = track
-    
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(1, 0)
-    fillCorner.Parent = fill
-    
-    local thumb = Instance.new("Frame")
-    thumb.Name = "Thumb"
-    thumb.Size = UDim2.new(0, 20, 0, 20)
-    thumb.Position = UDim2.new((config.value or 0.5), -10, 0.5, -10)
-    thumb.BackgroundColor3 = Color3.new(1, 1, 1)
-    thumb.Parent = sliderFrame
-    
-    local thumbCorner = Instance.new("UICorner")
-    thumbCorner.CornerRadius = UDim.new(1, 0)
-    thumbCorner.Parent = thumb
-    
-    local valueText = Instance.new("TextLabel")
-    valueText.Name = "ValueText"
-    valueText.Size = UDim2.new(0, 50, 0, 20)
-    valueText.Position = UDim2.new(0.5, -25, 0, -25)
-    valueText.Text = string.format("%.0f%%", (config.value or 0.5) * 100)
-    valueText.TextColor3 = Color3.new(1, 1, 1)
-    valueText.BackgroundTransparency = 1
-    valueText.Font = Enum.Font.Gotham
-    valueText.TextSize = 14
-    valueText.Parent = sliderFrame
-    
-    -- ドラッグ機能
-    local isDragging = false
-    
-    local function updateSlider(input)
-        local absolutePosition = track.AbsolutePosition.X
-        local absoluteSize = track.AbsoluteSize.X
+    -- マウスエンター
+    button.MouseEnter:Connect(function()
+        self:CancelTween(button, "Hover")
         
-        local relativeX = math.clamp((input.Position.X - absolutePosition) / absoluteSize, 0, 1)
+        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local goals = {
+            BackgroundColor3 = Color3.fromRGB(80, 120, 220),
+            BackgroundTransparency = 0.1
+        }
         
-        fill.Size = UDim2.new(relativeX, 0, 1, 0)
-        thumb.Position = UDim2.new(relativeX, -10, 0.5, -10)
-        valueText.Text = string.format("%.0f%%", relativeX * 100)
-        
-        if config.onChange then
-            config.onChange(relativeX)
-        end
-    end
-    
-    thumb.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or
-           input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = true
-            local tween = TweenService:Create(thumb, TweenInfo.new(0.1), {
-                Size = UDim2.new(0, 24, 0, 24)
-            })
-            tween:Play()
-        end
-    end)
-    
-    thumb.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or
-           input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = false
-            local tween = TweenService:Create(thumb, TweenInfo.new(0.1), {
-                Size = UDim2.new(0, 20, 0, 20)
-            })
-            tween:Play()
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
-                           input.UserInputType == Enum.UserInputType.Touch) then
-            updateSlider(input)
-        end
-    end)
-    
-    return sliderFrame
-end
-
---[[
-    ④ フィードバック・状態
-]]--
-function UIGodFunctions.showLoading(parent, message)
-    local loadingFrame = Instance.new("Frame")
-    loadingFrame.Name = "LoadingFrame"
-    loadingFrame.Size = UDim2.new(1, 0, 1, 0)
-    loadingFrame.BackgroundColor3 = Color3.new(0, 0, 0)
-    loadingFrame.BackgroundTransparency = 0.5
-    loadingFrame.ZIndex = 100
-    loadingFrame.Parent = parent
-    
-    local spinner = Instance.new("Frame")
-    spinner.Size = UDim2.new(0, 60, 0, 60)
-    spinner.Position = UDim2.new(0.5, -30, 0.5, -30)
-    spinner.BackgroundTransparency = 1
-    spinner.Parent = loadingFrame
-    
-    local rotateValue = Instance.new("NumberValue")
-    rotateValue.Value = 0
-    
-    local connection = RunService.RenderStepped:Connect(function(deltaTime)
-        rotateValue.Value = (rotateValue.Value + deltaTime * 360) % 360
-        spinner.Rotation = rotateValue.Value
-    end)
-    
-    -- 回転アニメーション用パーツ
-    for i = 1, 8 do
-        local part = Instance.new("Frame")
-        part.Size = UDim2.new(0, 8, 0, 20)
-        part.Position = UDim2.new(0.5, -4, 0, 10)
-        part.BackgroundColor3 = COLOR.PRIMARY
-        part.AnchorPoint = Vector2.new(0.5, 0)
-        part.Rotation = (i - 1) * 45
-        part.Parent = spinner
-        
-        local uiCorner = Instance.new("UICorner")
-        uiCorner.CornerRadius = UDim.new(0, 4)
-        uiCorner.Parent = part
-    end
-    
-    if message then
-        local messageLabel = Instance.new("TextLabel")
-        messageLabel.Size = UDim2.new(1, 0, 0, 30)
-        messageLabel.Position = UDim2.new(0, 0, 0.6, 0)
-        messageLabel.Text = message
-        messageLabel.TextColor3 = Color3.new(1, 1, 1)
-        messageLabel.BackgroundTransparency = 1
-        messageLabel.Font = Enum.Font.Gotham
-        messageLabel.TextSize = 16
-        messageLabel.Parent = loadingFrame
-    end
-    
-    return loadingFrame, function()
-        connection:Disconnect()
-        loadingFrame:Destroy()
-    end
-end
-
-function UIGodFunctions.showPopup(parent, config)
-    local popup = Instance.new("Frame")
-    popup.Name = "Popup"
-    popup.Size = config.size or UDim2.new(0, 300, 0, 200)
-    popup.Position = UDim2.new(0.5, -150, 0.5, -100)
-    popup.BackgroundColor3 = COLOR.DARK
-    popup.ZIndex = 90
-    popup.Parent = parent
-    
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 12)
-    uiCorner.Parent = popup
-    
-    local uiStroke = Instance.new("UIStroke")
-    uiStroke.Color = config.type == "error" and COLOR.ERROR or 
-                    config.type == "warning" and COLOR.WARNING or 
-                    config.type == "success" and COLOR.SUCCESS or
-                    COLOR.PRIMARY
-    uiStroke.Thickness = 3
-    uiStroke.Parent = popup
-    
-    -- タイトル
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -20, 0, 40)
-    title.Position = UDim2.new(0, 10, 0, 10)
-    title.Text = config.title or "通知"
-    title.TextColor3 = Color3.new(1, 1, 1)
-    title.BackgroundTransparency = 1
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 18
-    title.TextXAlignment = Enum.TextXAlignment.Center
-    title.Parent = popup
-    
-    -- メッセージ
-    local message = Instance.new("TextLabel")
-    message.Size = UDim2.new(1, -20, 1, -120)
-    message.Position = UDim2.new(0, 10, 0, 60)
-    message.Text = config.message or ""
-    message.TextColor3 = Color3.new(0.8, 0.8, 0.8)
-    message.BackgroundTransparency = 1
-    message.Font = Enum.Font.Gotham
-    message.TextSize = 14
-    message.TextWrapped = true
-    message.Parent = popup
-    
-    -- ボタン
-    local buttonFrame = Instance.new("Frame")
-    buttonFrame.Size = UDim2.new(1, 0, 0, 50)
-    buttonFrame.Position = UDim2.new(0, 0, 1, -50)
-    buttonFrame.BackgroundTransparency = 1
-    buttonFrame.Parent = popup
-    
-    local okButton = UIGodFunctions.createButton(buttonFrame, {
-        name = "OKButton",
-        text = config.buttonText or "OK",
-        size = UDim2.new(0.4, 0, 0.8, 0),
-        position = UDim2.new(0.5, -70, 0.1, 0),
-        onClick = function()
-            if config.onConfirm then
-                config.onConfirm()
-            end
-            UIGodFunctions.hideWithAnimation(popup)
-        end
-    })
-    
-    if config.showCancel then
-        local cancelButton = UIGodFunctions.createButton(buttonFrame, {
-            name = "CancelButton",
-            text = "キャンセル",
-            size = UDim2.new(0.4, 0, 0.8, 0),
-            position = UDim2.new(0.05, 0, 0.1, 0),
-            bgColor = COLOR.SECONDARY,
-            onClick = function()
-                if config.onCancel then
-                    config.onCancel()
-                end
-                UIGodFunctions.hideWithAnimation(popup)
-            end
-        })
-    end
-    
-    -- 表示アニメーション
-    popup.Size = UDim2.new(0, 10, 0, 10)
-    popup.Position = UDim2.new(0.5, -5, 0.5, -5)
-    
-    local showTween = TweenService:Create(popup, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = config.size or UDim2.new(0, 300, 0, 200),
-        Position = UDim2.new(0.5, -150, 0.5, -100)
-    })
-    showTween:Play()
-    
-    return popup
-end
-
---[[
-    ⑤ 情報表示
-]]--
-function UIGodFunctions.createStatusBar(parent, config)
-    local barFrame = Instance.new("Frame")
-    barFrame.Name = config.name or "StatusBar"
-    barFrame.Size = config.size or UDim2.new(1, 0, 0, 30)
-    barFrame.BackgroundColor3 = config.bgColor or Color3.fromRGB(50, 50, 50)
-    barFrame.Parent = parent
-    
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(1, 0)
-    uiCorner.Parent = barFrame
-    
-    local fill = Instance.new("Frame")
-    fill.Name = "Fill"
-    fill.Size = UDim2.new(config.value or 1, 0, 1, 0)
-    fill.BackgroundColor3 = config.fillColor or COLOR.PRIMARY
-    fill.Parent = barFrame
-    
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(1, 0)
-    fillCorner.Parent = fill
-    
-    -- グラデーションエフェクト
-    local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, fill.BackgroundColor3),
-        ColorSequenceKeypoint.new(1, Color3.new(
-            math.min(1, fill.BackgroundColor3.R * 1.3),
-            math.min(1, fill.BackgroundColor3.G * 1.3),
-            math.min(1, fill.BackgroundColor3.B * 1.3)
-        ))
-    })
-    gradient.Rotation = 90
-    gradient.Parent = fill
-    
-    -- テキスト表示
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.Text = config.text or string.format("%.0f/%.0f", (config.value or 1) * (config.max or 100), config.max or 100)
-    textLabel.TextColor3 = config.textColor or Color3.new(1, 1, 1)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Font = Enum.Font.GothamBold
-    textLabel.TextSize = 14
-    textLabel.Parent = barFrame
-    
-    -- 更新関数
-    function barFrame:Update(value, maxValue)
-        local newSize = math.clamp(value / (maxValue or 100), 0, 1)
-        local tween = TweenService:Create(fill, TweenInfo.new(0.5), {
-            Size = UDim2.new(newSize, 0, 1, 0)
-        })
+        local tween = TweenService:Create(button, tweenInfo, goals)
         tween:Play()
+        self.ActiveTweens[button] = self.ActiveTweens[button] or {}
+        self.ActiveTweens[button]["Hover"] = tween
+    end)
+    
+    -- マウスリーブ
+    button.MouseLeave:Connect(function()
+        self:CancelTween(button, "Hover")
         
-        textLabel.Text = config.text or string.format("%.0f/%.0f", value, maxValue or 100)
-    end
-    
-    -- アニメーション（脈動）
-    if config.animate then
-        local pulseConnection
-        pulseConnection = RunService.Heartbeat:Connect(function()
-            local time = tick()
-            local pulse = math.sin(time * 3) * 0.1 + 1
-            fill.Size = UDim2.new((config.value or 1) * pulse, 0, 1, 0)
-        end)
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local goals = {
+            BackgroundColor3 = originalBackgroundColor,
+            BackgroundTransparency = 0.2
+        }
         
-        -- クリーンアップ用
-        barFrame:SetAttribute("PulseConnection", pulseConnection)
-    end
+        local tween = TweenService:Create(button, tweenInfo, goals)
+        tween:Play()
+        self.ActiveTweens[button] = self.ActiveTweens[button] or {}
+        self.ActiveTweens[button]["Hover"] = tween
+    end)
     
-    return barFrame
-end
-
---[[
-    ⑥ 特有必須機能
-]]--
-function UIGodFunctions.createViewportFrame(parent, model, size)
-    local viewportFrame = Instance.new("ViewportFrame")
-    viewportFrame.Size = size or UDim2.new(0, 200, 0, 200)
-    viewportFrame.BackgroundTransparency = 1
-    viewportFrame.Parent = parent
-    
-    if model then
-        local modelClone = model:Clone()
-        modelClone.Parent = viewportFrame
+    -- マウスダウン
+    button.MouseButton1Down:Connect(function()
+        self:CancelTween(button, "Press")
         
-        -- カメラ設定
-        local camera = Instance.new("Camera")
-        camera.CFrame = CFrame.new(Vector3.new(0, 0, 5), Vector3.new(0, 0, 0))
-        camera.Parent = viewportFrame
-        viewportFrame.CurrentCamera = camera
+        local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        local goals = {
+            Size = UDim2.new(originalSize.X.Scale, originalSize.X.Offset * 0.9, 
+                            originalSize.Y.Scale, originalSize.Y.Offset * 0.9),
+            BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+        }
         
-        -- モデルを中央に配置
-        local boundingBox = modelClone:GetBoundingBox()
-        local size = boundingBox.Size
-        local center = boundingBox.CFrame.Position
+        local tween = TweenService:Create(button, tweenInfo, goals)
+        tween:Play()
+        self.ActiveTweens[button] = self.ActiveTweens[button] or {}
+        self.ActiveTweens[button]["Press"] = tween
+    end)
+    
+    -- マウスアップ
+    button.MouseButton1Up:Connect(function()
+        self:CancelTween(button, "Press")
         
-        camera.CFrame = CFrame.new(center + Vector3.new(0, 0, size.Magnitude * 2), center)
-    end
-    
-    return viewportFrame
-end
-
-function UIGodFunctions.manageZIndex(uiObject, baseZIndex)
-    local function updateChildrenZIndex(object, offset)
-        if object:IsA("GuiObject") then
-            object.ZIndex = baseZIndex + offset
-        end
+        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+        local goals = {
+            Size = originalSize,
+            BackgroundColor3 = Color3.fromRGB(80, 120, 220)
+        }
         
-        for _, child in ipairs(object:GetChildren()) do
-            updateChildrenZIndex(child, offset + 1)
-        end
-    end
-    
-    updateChildrenZIndex(uiObject, 0)
-end
-
---[[
-    ⑦ 見た目・演出（神機能）
-]]--
-function UIGodFunctions.applyRippleEffect(button)
-    local ripple = Instance.new("Frame")
-    ripple.Name = "Ripple"
-    ripple.Size = UDim2.new(0, 0, 0, 0)
-    ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
-    ripple.AnchorPoint = Vector2.new(0.5, 0.5)
-    ripple.BackgroundColor3 = Color3.new(1, 1, 1)
-    ripple.BackgroundTransparency = 0.5
-    ripple.Parent = button
-    
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(1, 0)
-    uiCorner.Parent = ripple
-    
-    local tween1 = TweenService:Create(ripple, TweenInfo.new(0.5), {
-        Size = UDim2.new(2, 0, 2, 0),
-        BackgroundTransparency = 1
-    })
-    
-    tween1:Play()
-    tween1.Completed:Connect(function()
-        ripple:Destroy()
+        local tween = TweenService:Create(button, tweenInfo, goals)
+        tween:Play()
+        self.ActiveTweens[button] = self.ActiveTweens[button] or {}
+        self.ActiveTweens[button]["Press"] = tween
     end)
 end
 
-function UIGodFunctions.createDynamicGradientBackground(parent)
-    local gradientFrame = Instance.new("Frame")
-    gradientFrame.Size = UDim2.new(1, 0, 1, 0)
-    gradientFrame.BackgroundTransparency = 0
-    gradientFrame.Parent = parent
-    
-    local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromHSV(tick() % 5 / 5, 0.7, 0.5)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromHSV((tick() + 1) % 5 / 5, 0.7, 0.6)),
-        ColorSequenceKeypoint.new(1, Color3.fromHSV((tick() + 2) % 5 / 5, 0.7, 0.5))
-    })
-    gradient.Rotation = 45
-    gradient.Parent = gradientFrame
-    
-    -- アニメーション
-    local connection = RunService.Heartbeat:Connect(function()
-        local time = tick()
-        gradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromHSV(time % 5 / 5, 0.7, 0.5)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromHSV((time + 1) % 5 / 5, 0.7, 0.6)),
-            ColorSequenceKeypoint.new(1, Color3.fromHSV((time + 2) % 5 / 5, 0.7, 0.5))
-        })
-    end)
-    
-    gradientFrame:SetAttribute("Connection", connection)
-    
-    return gradientFrame
-end
-
---[[
-    ⑧ 操作性・快適さ
-]]--
-function UIGodFunctions.makeDraggable(gui, handle)
-    handle = handle or gui
-    
-    local dragging = false
+-- ドラッグ機能設定
+function UIManager:MakeDraggable()
+    local frame = self.MainFrame
     local dragInput, dragStart, startPos
     
-    local function update(input)
-        local delta = input.Position - dragStart
-        gui.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
+    -- ドラッグ開始
+    local function onDragStart(input)
+        if not self.IsMinimized then
+            self.IsDragging = true
+            self.DragStartPosition = input.Position
+            self.FrameStartPosition = frame.Position
+            self.LastDragPosition = input.Position
+            self.LastDragTime = tick()
+            self.DragVelocity = Vector2.new(0, 0)
+            
+            -- ドラッグ開始エフェクト
+            self:ApplyDragEffects(true)
+            
+            -- ドラッグ開始SE（オプション）
+            -- self:PlaySound("DragStart")
+        end
     end
     
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = gui.Position
+    -- ドラッグ中
+    local function onDrag(input)
+        if self.IsDragging and not self.IsMinimized then
+            local delta = input.Position - self.DragStartPosition
+            local newPosition = UDim2.new(
+                self.FrameStartPosition.X.Scale,
+                self.FrameStartPosition.X.Offset + delta.X,
+                self.FrameStartPosition.Y.Scale,
+                self.FrameStartPosition.Y.Offset + delta.Y
+            )
             
-            input.Changed:Connect(function()
+            -- 画面内制限
+            newPosition = self:ApplyDragConstraints(newPosition)
+            frame.Position = newPosition
+            
+            -- 速度計算
+            local currentTime = tick()
+            local deltaTime = currentTime - self.LastDragTime
+            
+            if deltaTime > 0 then
+                local deltaPos = input.Position - self.LastDragPosition
+                self.DragVelocity = deltaPos / deltaTime
+            end
+            
+            self.LastDragPosition = input.Position
+            self.LastDragTime = currentTime
+        end
+    end
+    
+    -- ドラッグ終了
+    local function onDragEnd(input)
+        if self.IsDragging then
+            self.IsDragging = false
+            
+            -- ドラッグ終了エフェクト
+            self:ApplyDragEffects(false)
+            
+            -- 慣性効果
+            if self.DragVelocity.Magnitude > 10 then
+                self:ApplyInertia()
+            end
+            
+            -- スナップ効果
+            self:ApplySnapToEdges()
+            
+            -- ドラッグ終了SE（オプション）
+            -- self:PlaySound("DragEnd")
+        end
+    end
+    
+    -- 入力接続
+    self.Events.DragStarted = self.TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            onDragStart(input)
+            
+            local connection
+            connection = input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
+                    onDragEnd(input)
+                    connection:Disconnect()
                 end
             end)
         end
     end)
     
-    handle.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or
+    self.Events.DragChanged = self.TitleBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or 
            input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
+            onDrag(input)
         end
     end)
     
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input == dragInput then
-            update(input)
+    -- グローバル入力監視
+    self.Events.GlobalInputEnded = UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            onDragEnd(input)
         end
     end)
 end
 
-function UIGodFunctions.saveUIPosition(gui, saveKey)
-    local dataStore = game:GetService("DataStoreService"):GetDataStore("UIPositions")
+-- ドラッグ制限適用
+function UIManager:ApplyDragConstraints(position)
+    local frame = self.MainFrame
+    local absoluteSize = frame.AbsoluteSize
+    local viewportSize = workspace.CurrentCamera.ViewportSize
     
-    -- 保存
-    gui:GetPropertyChangedSignal("Position"):Connect(function()
-        task.defer(function()
-            local success, err = pcall(function()
-                dataStore:SetAsync(saveKey, {
-                    ScaleX = gui.Position.X.Scale,
-                    OffsetX = gui.Position.X.Offset,
-                    ScaleY = gui.Position.Y.Scale,
-                    OffsetY = gui.Position.Y.Offset
-                })
-            end)
-        end)
-    end)
+    -- 画面内に収める
+    local minX = 0
+    local maxX = viewportSize.X - absoluteSize.X
+    local minY = 0
+    local maxY = viewportSize.Y - absoluteSize.Y
     
-    -- 読み込み
-    task.spawn(function()
-        local success, data = pcall(function()
-            return dataStore:GetAsync(saveKey)
-        end)
+    -- SafeArea対応（モバイル向け）
+    local safeMinX = UI_CONFIG.SAFE_AREA_PADDING
+    local safeMaxX = viewportSize.X - absoluteSize.X - UI_CONFIG.SAFE_AREA_PADDING
+    local safeMinY = UI_CONFIG.SAFE_AREA_PADDING
+    local safeMaxY = viewportSize.Y - absoluteSize.Y - UI_CONFIG.SAFE_AREA_PADDING
+    
+    -- SafeAreaが適用可能な場合
+    if safeMaxX > safeMinX and safeMaxY > safeMinY then
+        minX, maxX = safeMinX, safeMaxX
+        minY, maxY = safeMinY, safeMaxY
+    end
+    
+    -- 位置を制限
+    local offsetX = math.clamp(position.X.Offset, minX, maxX)
+    local offsetY = math.clamp(position.Y.Offset, minY, maxY)
+    
+    return UDim2.new(position.X.Scale, offsetX, position.Y.Scale, offsetY)
+end
+
+-- ドラッグエフェクト適用
+function UIManager:ApplyDragEffects(isDragging)
+    local frame = self.MainFrame
+    local stroke = frame:FindFirstChildOfClass("UIStroke")
+    local gradient = frame:FindFirstChildOfClass("UIGradient")
+    
+    self:CancelTween(frame, "DragEffect")
+    
+    local tweenInfo = TweenInfo.new(
+        UI_CONFIG.DRAG_ANIMATION_DURATION,
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+    
+    local goals = {}
+    
+    if isDragging then
+        -- ドラッグ中の視覚変化
+        goals.BackgroundTransparency = 0.05
+        goals.Size = UDim2.new(frame.Size.X.Scale, frame.Size.X.Offset * 1.02,
+                              frame.Size.Y.Scale, frame.Size.Y.Offset * 1.02)
         
-        if success and data then
-            gui.Position = UDim2.new(
-                data.ScaleX or 0,
-                data.OffsetX or 0,
-                data.ScaleY or 0,
-                data.OffsetY or 0
-            )
+        if stroke then
+            goals.UIStrokeThickness = 4
+            goals.UIStrokeColor = Color3.fromRGB(150, 200, 255)
+            goals.UIStrokeTransparency = 0.1
         end
-    end)
-end
-
---[[
-    ⑨ 賢いUI
-]]--
-function UIGodFunctions.createSmartTooltip(parent, target, content)
-    local tooltip = Instance.new("Frame")
-    tooltip.Name = "Tooltip"
-    tooltip.Size = UDim2.new(0, 200, 0, 100)
-    tooltip.BackgroundColor3 = COLOR.DARK
-    tooltip.BackgroundTransparency = 0.1
-    tooltip.Visible = false
-    tooltip.ZIndex = 1000
-    tooltip.Parent = parent
-    
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 8)
-    uiCorner.Parent = tooltip
-    
-    local uiStroke = Instance.new("UIStroke")
-    uiStroke.Color = COLOR.PRIMARY
-    uiStroke.Thickness = 2
-    uiStroke.Parent = tooltip
-    
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, -10, 1, -10)
-    textLabel.Position = UDim2.new(0, 5, 0, 5)
-    textLabel.Text = content
-    textLabel.TextColor3 = Color3.new(1, 1, 1)
-    textLabel.BackgroundTransparency = 1
-    textLabel.TextWrapped = true
-    textLabel.Font = Enum.Font.Gotham
-    textLabel.TextSize = 12
-    textLabel.Parent = tooltip
-    
-    -- 表示/非表示
-    local showConnection, hideConnection
-    
-    local function showTooltip()
-        tooltip.Visible = true
         
-        -- マウス位置に追従
-        local mouse = game:GetService("Players").LocalPlayer:GetMouse()
-        tooltip.Position = UDim2.new(
-            0, mouse.X + 20,
-            0, mouse.Y + 20
-        )
-    end
-    
-    local function hideTooltip()
-        tooltip.Visible = false
-    end
-    
-    if target:IsA("GuiObject") then
-        showConnection = target.MouseEnter:Connect(showTooltip)
-        hideConnection = target.MouseLeave:Connect(hideTooltip)
-    end
-    
-    -- クリーンアップ関数
-    return tooltip, function()
-        if showConnection then showConnection:Disconnect() end
-        if hideConnection then hideConnection:Disconnect() end
-        tooltip:Destroy()
-    end
-end
-
---[[
-    ユーティリティ関数
-]]--
-function UIGodFunctions.hideWithAnimation(guiObject)
-    local tween = TweenService:Create(guiObject, TweenInfo.new(0.3), {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 10, 0, 10),
-        Position = UDim2.new(0.5, -5, 0.5, -5)
-    })
-    
-    tween:Play()
-    tween.Completed:Connect(function()
-        if guiObject and guiObject.Parent then
-            guiObject:Destroy()
+        -- 影効果（疑似）
+        if gradient then
+            goals.UIGradientRotation = 90
         end
-    end)
-end
-
-function UIGodFunctions.detectInputDevice()
-    if UserInputService.TouchEnabled then
-        return "Mobile"
-    elseif UserInputService.GamepadEnabled then
-        return "Gamepad"
-    elseif UserInputService.KeyboardEnabled then
-        return "Keyboard"
     else
-        return "Unknown"
-    end
-end
-
-function UIGodFunctions.adaptForMobile(guiObject)
-    if UserInputService.TouchEnabled then
-        -- 最小タッチサイズを確保
-        if guiObject:IsA("GuiButton") then
-            local currentSize = guiObject.AbsoluteSize
-            if currentSize.X < MIN_TOUCH_SIZE or currentSize.Y < MIN_TOUCH_SIZE then
-                local scaleX = math.max(MIN_TOUCH_SIZE / currentSize.X, 1)
-                local scaleY = math.max(MIN_TOUCH_SIZE / currentSize.Y, 1)
-                guiObject.Size = UDim2.new(
-                    guiObject.Size.X.Scale * scaleX,
-                    guiObject.Size.X.Offset * scaleX,
-                    guiObject.Size.Y.Scale * scaleY,
-                    guiObject.Size.Y.Offset * scaleY
-                )
-            end
+        -- 通常状態に戻す
+        goals.BackgroundTransparency = self.OriginalProperties.BackgroundTransparency or 0.1
+        goals.Size = self.OriginalSize
+        
+        if stroke then
+            goals.UIStrokeThickness = self.OriginalProperties.UIStrokeThickness or 2
+            goals.UIStrokeColor = self.OriginalProperties.UIStrokeColor or Color3.fromRGB(100, 150, 255)
+            goals.UIStrokeTransparency = 0.3
         end
         
-        -- パディング追加
-        local uiPadding = Instance.new("UIPadding")
-        uiPadding.PaddingBottom = UDim.new(0, 5)
-        uiPadding.PaddingTop = UDim.new(0, 5)
-        uiPadding.PaddingLeft = UDim.new(0, 5)
-        uiPadding.PaddingRight = UDim.new(0, 5)
-        uiPadding.Parent = guiObject
+        if gradient then
+            goals.UIGradientRotation = 45
+        end
+    end
+    
+    -- 複数プロパティのトゥイーン
+    for goalName, goalValue in pairs(goals) do
+        if goalName == "UIStrokeThickness" and stroke then
+            local tween = TweenService:Create(stroke, tweenInfo, {Thickness = goalValue})
+            tween:Play()
+        elseif goalName == "UIStrokeColor" and stroke then
+            local tween = TweenService:Create(stroke, tweenInfo, {Color = goalValue})
+            tween:Play()
+        elseif goalName == "UIStrokeTransparency" and stroke then
+            local tween = TweenService:Create(stroke, tweenInfo, {Transparency = goalValue})
+            tween:Play()
+        elseif goalName == "UIGradientRotation" and gradient then
+            local tween = TweenService:Create(gradient, tweenInfo, {Rotation = goalValue})
+            tween:Play()
+        else
+            -- フレームのプロパティ
+            local tween = TweenService:Create(frame, tweenInfo, {[goalName] = goalValue})
+            tween:Play()
+        end
     end
 end
 
---[[
-    初期化関数
-]]--
-function UIGodFunctions.init(player)
-    -- グローバルUIスタイル設定
-    local style = {
-        Font = Enum.Font.Gotham,
-        TextSize = 14,
-        ButtonColor = COLOR.PRIMARY,
-        BackgroundColor = COLOR.DARK,
-        TextColor = Color3.new(1, 1, 1)
-    }
+-- 慣性効果
+function UIManager:ApplyInertia()
+    local frame = self.MainFrame
+    local velocity = self.DragVelocity * UI_CONFIG.DRAG_SENSITIVITY
     
-    -- 入力デバイスに応じた設定
-    local device = UIGodFunctions.detectInputDevice()
-    print("Input device detected:", device)
+    -- 慣性減衰
+    local connection
+    connection = RunService.Heartbeat:Connect(function(dt)
+        velocity = velocity * UI_CONFIG.INERTIA_DECAY
+        
+        if velocity.Magnitude < 1 then
+            connection:Disconnect()
+            return
+        end
+        
+        local currentPos = frame.Position
+        local newPos = UDim2.new(
+            currentPos.X.Scale,
+            currentPos.X.Offset + velocity.X * dt,
+            currentPos.Y.Scale,
+            currentPos.Y.Offset + velocity.Y * dt
+        )
+        
+        newPos = self:ApplyDragConstraints(newPos)
+        frame.Position = newPos
+    end)
     
-    -- カメラ固定中でもUI操作可能にする
-    if player then
-        player.CameraMode = Enum.CameraMode.Classic
-    end
-    
-    return {
-        Style = style,
-        Device = device,
-        Version = "1.0.0",
-        Author = "超神関数数式"
-    }
+    table.insert(self.Events, connection)
 end
 
-return UIGodFunctions
+-- 端スナップ
+function UIManager:ApplySnapToEdges()
+    local frame = self.MainFrame
+    local position = frame.Position
+    local absoluteSize = frame.AbsoluteSize
+    local viewportSize = workspace.CurrentCamera.ViewportSize
+    
+    local edges = {
+        left = {position = 0, current = position.X.Offset},
+        top = {position = 0, current = position.Y.Offset},
+        right = {position = viewportSize.X - absoluteSize.X, current = position.X.Offset},
+        bottom = {position = viewportSize.Y - absoluteSize.Y, current = position.Y.Offset}
+    }
+    
+    local snapThreshold = UI_CONFIG.SNAP_THRESHOLD
+    local snapTo = nil
+    
+    -- 最も近い端を検出
+    for edgeName, edgeData in pairs(edges) do
+        if math.abs(edgeData.current - edgeData.position) < snapThreshold then
+            snapTo = edgeName
+            break
+        end
+    end
+    
+    if snapTo then
+        local targetPosition
+        if snapTo == "left" then
+            targetPosition = UDim2.new(0, edges.left.position, position.Y.Scale, position.Y.Offset)
+        elseif snapTo == "top" then
+            targetPosition = UDim2.new(position.X.Scale, position.X.Offset, 0, edges.top.position)
+        elseif snapTo == "right" then
+            targetPosition = UDim2.new(0, edges.right.position, position.Y.Scale, position.Y.Offset)
+        elseif snapTo == "bottom" then
+            targetPosition = UDim2.new(position.X.Scale, position.X.Offset, 0, edges.bottom.position)
+        end
+        
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(frame, tweenInfo, {Position = targetPosition})
+        tween:Play()
+    end
+end
+
+-- 最小化機能
+function UIManager:SetupMinimize()
+    self.MinimizeButton.MouseButton1Click:Connect(function()
+        if self.IsMinimized then
+            self:Maximize()
+        else
+            self:Minimize()
+        end
+    end)
+    
+    self.CloseButton.MouseButton1Click:Connect(function()
+        self:Close()
+    end)
+    
+    -- 最小化アイコンクリックで最大化
+    self.MinimizedIcon.MouseButton1Click:Connect(function()
+        if self.IsMinimized then
+            self:Maximize()
+        end
+    end)
+end
+
+-- 最小化実行
+function UIManager:Minimize(minimizeType)
+    if self.IsMinimized then return end
+    
+    self.IsMinimized = true
+    self.MinimizeType = minimizeType or self.MinimizeType
+    
+    -- 全てのアクティブなトゥイーンをキャンセル
+    self:CancelAllActiveTweens()
+    
+    -- 最小化タイプに応じたアニメーション
+    if self.MinimizeType == "scale" then
+        self:MinimizeScale()
+    elseif self.MinimizeType == "fade" then
+        self:MinimizeFade()
+    elseif self.MinimizeType == "slide" then
+        self:MinimizeSlide()
+    elseif self.MinimizeType == "rotate" then
+        self:MinimizeRotate()
+    elseif self.MinimizeType == "fold" then
+        self:MinimizeFold()
+    elseif self.MinimizeType == "icon" then
+        self:MinimizeToIcon()
+    else
+        self:MinimizeScale() -- デフォルト
+    end
+    
+    -- 最小化SE（オプション）
+    -- self:PlaySound("Minimize")
+end
+
+-- 最大化実行
+function UIManager:Maximize()
+    if not self.IsMinimized then return end
+    
+    self.IsMinimized = false
+    
+    -- 全てのアクティブなトゥイーンをキャンセル
+    self:CancelAllActiveTweens()
+    
+    -- 最小化アイコンを非表示
+    if self.MinimizeType == "icon" then
+        self.MinimizedIcon.Visible = false
+    end
+    
+    -- 最大化アニメーション
+    local frame = self.MainFrame
+    frame.Visible = true
+    
+    local tweenInfo = TweenInfo.new(
+        UI_CONFIG.MAXIMIZE_ANIMATION_DURATION,
+        Enum.EasingStyle.Back,
+        Enum.EasingDirection.Out
+    )
+    
+    local goals = {
+        Size = self.OriginalSize,
+        Position = self.OriginalPosition,
+        BackgroundTransparency = self.OriginalProperties.BackgroundTransparency or 0.1,
+        Rotation = 0
+    }
+    
+    local tween = TweenService:Create(frame, tweenInfo, goals)
+    tween:Play()
+    
+    -- UIStrokeも戻す
+    local stroke = frame:FindFirstChildOfClass("UIStroke")
+    if stroke then
+        local strokeTweenInfo = TweenInfo.new(
+            UI_CONFIG.MAXIMIZE_ANIMATION_DURATION,
+            Enum.EasingStyle.Quad,
+            Enum.EasingDirection.Out
+        )
+        
+        local strokeGoals = {
+            Thickness = self.OriginalProperties.UIStrokeThickness or 2,
+            Color = self.OriginalProperties.UIStrokeColor or Color3.fromRGB(100, 150, 255),
+            Transparency = 0.3
+        }
+        
+        local strokeTween = TweenService:Create(stroke, strokeTweenInfo, strokeGoals)
+        strokeTween:Play()
+    end
+    
+    -- 最大化SE（オプション）
+    -- self:PlaySound("Maximize")
+end
+
+-- スケール最小化
+function UIManager:MinimizeScale()
+    local frame = self.MainFrame
+    
+    local tweenInfo = TweenInfo.new(
+        UI_CONFIG.MINIMIZE_ANIMATION_DURATION,
+        Enum.EasingStyle.Back,
+        Enum.EasingDirection.In
+    )
+    
+    local goals = {
+        Size = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1
+    }
+    
+    local tween = TweenService:Create(frame, tweenInfo, goals)
+    tween:Play()
+    
+    tween.Completed:Connect(function()
+        frame.Visible = false
+    end)
+end
+
+-- フェード最小化
+function UIManager:MinimizeFade()
+    local frame = self.MainFrame
+    
+    local tweenInfo = TweenInfo.new(
+        UI_CONFIG.MINIMIZE_ANIMATION_DURATION,
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+    
+    local goals = {
+        BackgroundTransparency = 1
+    }
+    
+    local tween = TweenService:Create(frame, tweenInfo, goals)
+    tween:Play()
+    
+    -- 子要素もフェードアウト
+    for _, child in ipairs(frame:GetDescendants()) do
+        if child:IsA("GuiObject") then
+            local childTween = TweenService:Create(child, tweenInfo, {BackgroundTransparency = 1})
+            if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+                childTween = TweenService:Create(child, tweenInfo, {TextTransparency = 1})
+            end
+            childTween:Play()
+        end
+    end
+    
+    tween.Completed:Connect(function()
+        frame.Visible = false
+    end)
+end
+
+-- スライド最小化
+function UIManager:MinimizeSlide()
+    local frame = self.MainFrame
+    local viewportSize = workspace.CurrentCamera.ViewportSize
+    
+    local tweenInfo = TweenInfo.new(
+        UI_CONFIG.MINIMIZE_ANIMATION_DURATION,
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.In
+    )
+    
+    local goals = {
+        Position = UDim2.new(0, -frame.AbsoluteSize.X, frame.Position.Y.Scale, frame.Position.Y.Offset)
+    }
+    
+    local tween = TweenService:Create(frame, tweenInfo, goals)
+    tween:Play()
+    
+    tween.Completed:Connect(function()
+        frame.Visible = false
+    end)
+end
+
+-- 回転最小化
+function UIManager:MinimizeRotate()
+    local frame = self.MainFrame
+    
+    local tweenInfo = TweenInfo.new(
+        UI_CONFIG.MINIMIZE_ANIMATION_DURATION,
+        Enum.EasingStyle.Back,
+        Enum.EasingDirection.In
+    )
+    
+    local goals = {
+        Rotation = 180,
+        Size = UDim2.new(0, 0, 0, 0)
+    }
+    
+    local tween = TweenService:Create(frame, tweenInfo, goals)
+    tween:Play()
+    
+    tween.Completed:Connect(function()
+        frame.Visible = false
+    end)
+end
+
+-- 折りたたみ最小化
+function UIManager:MinimizeFold()
+    local frame = self.MainFrame
+    
+    local tweenInfo1 = TweenInfo.new(
+        UI_CONFIG.MINIMIZE_ANIMATION_DURATION / 2,
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.Out
+    )
+    
+    local tweenInfo2 = TweenInfo.new(
+        UI_CONFIG.MINIMIZE_ANIMATION_DURATION / 2,
+        Enum.EasingStyle.Quad,
+        Enum.EasingDirection.In
+    )
+    
+    -- まず高さを縮める
+    local goals1 = {
+        Size = UDim2.new(frame.Size.X.Scale, frame.Size.X.Offset, 0, 40)
+    }
+    
+    local tween1 = TweenService:Create(frame, tweenInfo1, goals1)
+    tween1:Play()
+    
+    tween1.Completed:Connect(function()
+        -- 次に幅を縮める
+        local goals2 = {
+            Size = UDim2.new(0, 0, 0, 40),
+            BackgroundTransparency = 1
+        }
+        
+        local tween2 = TweenService:Create(frame, tweenInfo2, goals2)
+        tween2:Play()
+        
+        tween2.Completed:Connect(function()
+            frame.Visible = false
+        end)
+    end)
+end
+
+-- アイコン化最小化
+function UIManager:MinimizeToIcon()
+    local frame = self.MainFrame
+    
+    -- 最小化アイコンの位置を設定
+    self.MinimizedIcon.Position = UDim2.new(
+        0, frame.AbsolutePosition.X,
+        0, frame.AbsolutePosition.Y
+    )
+    
+    self.MinimizedIcon.Visible = true
+    
+    -- アイコンにUIのスクリーンショットを設定（実際の実装ではより高度な処理が必要）
+    self.MinimizedIcon.Text = self.Name:sub(1, 3)
+    
+    local tweenInfo = TweenInfo.new(
+        UI_CONFIG.MINIMIZE_ANIMATION_DURATION,
+        Enum.EasingStyle.Back,
+        Enum.EasingDirection.In
+    )
+    
+    -- フレームを縮小してアイコンの位置に移動
+    local goals = {
+        Size = UDim2.new(0, 60, 0, 60),
+        Position = UDim2.new(0, frame.AbsolutePosition.X, 0, frame.AbsolutePosition.Y),
+        BackgroundTransparency = 1
+    }
+    
+    local tween = TweenService:Create(frame, tweenInfo, goals)
+    tween:Play()
+    
+    tween.Completed:Connect(function()
+        frame.Visible = false
+    end)
+end
+
+-- 閉じる
+function UIManager:Close()
+    -- 閉じるアニメーション
+    local frame = self.MainFrame
+    
+    local tweenInfo = TweenInfo.new(
+        0.3,
+        Enum.EasingStyle.Back,
+        Enum.EasingDirection.In
+    )
+    
+    local goals = {
+        Size = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Rotation = 45
+    }
+    
+    local tween = TweenService:Create(frame, tweenInfo, goals)
+    tween:Play()
+    
+    tween.Completed:Connect(function()
+        self:Destroy()
+    end)
+    
+    -- 閉じるSE（オプション）
+    -- self:PlaySound("Close")
+end
+
+-- トゥイーンキャンセル
+function UIManager:CancelTween(object, key)
+    if self.ActiveTweens[object] and self.ActiveTweens[object][key] then
+        self.ActiveTweens[object][key]:Cancel()
+        self.ActiveTweens[object][key] = nil
+    end
+end
+
+function UIManager:CancelAllActiveTweens()
+    for object, tweens in pairs(self.ActiveTweens) do
+        for key, tween in pairs(tweens) do
+            tween:Cancel()
+        end
+    end
+    self.ActiveTweens = {}
+end
+
+-- サウンド再生（オプション）
+function UIManager:PlaySound(soundName)
+    -- サウンド実装例
+    -- local sound = Instance.new("Sound")
+    -- sound.SoundId = "rbxassetid://" .. SOUND_IDS[soundName]
+    -- sound.Parent = SoundService
+    -- sound:Play()
+    -- game:GetService("Debris"):AddItem(sound, 3)
+end
+
+-- レスポンシブUI対応
+function UIManager:SetupResponsive()
+    local camera = workspace.CurrentCamera
+    
+    local function updateResponsive()
+        local viewportSize = camera.ViewportSize
+        
+        if viewportSize.X <= UI_CONFIG.RESPONSIVE_BREAKPOINTS.MOBILE then
+            -- モバイル向けサイズ
+            self.MainFrame.Size = UDim2.new(0.9, 0, 0.7, 0)
+        elseif viewportSize.X <= UI_CONFIG.RESPONSIVE_BREAKPOINTS.TABLET then
+            -- タブレット向けサイズ
+            self.MainFrame.Size = UDim2.new(0.8, 0, 0.6, 0)
+        else
+            -- デスクトップ向けサイズ
+            self.MainFrame.Size = self.OriginalSize
+        end
+        
+        -- 中央揃え
+        self.MainFrame.Position = UDim2.new(0.5, -self.MainFrame.AbsoluteSize.X/2, 
+                                           0.5, -self.MainFrame.AbsoluteSize.Y/2)
+    end
+    
+    -- 初期設定
+    updateResponsive()
+    
+    -- 画面サイズ変更時に更新
+    self.Events.ViewportSizeChanged = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateResponsive)
+end
+
+-- 破棄
+function UIManager:Destroy()
+    -- イベント切断
+    for _, connection in pairs(self.Events) do
+        if typeof(connection) == "RBXScriptConnection" then
+            connection:Disconnect()
+        end
+    end
+    
+    -- トゥイーンキャンセル
+    self:CancelAllActiveTweens()
+    
+    -- UI削除
+    if self.ScreenGui then
+        self.ScreenGui:Destroy()
+    end
+    
+    -- インスタンスリストから削除
+    for i, instance in ipairs(UIManager.Instances) do
+        if instance == self then
+            table.remove(UIManager.Instances, i)
+            break
+        end
+    end
+end
+
+-- 視覚効果：パルスアニメーション
+function UIManager:AddPulseEffect(object, interval, minTransparency, maxTransparency)
+    local originalTransparency = object.BackgroundTransparency
+    
+    local pulseConnection
+    local isPulsing = true
+    local time = 0
+    
+    pulseConnection = RunService.Heartbeat:Connect(function(dt)
+        if not isPulsing then
+            pulseConnection:Disconnect()
+            return
+        end
+        
+        time = time + dt
+        local sine = math.sin(time * math.pi * 2 / interval)
+        local transparency = minTransparency + (maxTransparency - minTransparency) * (sine + 1) / 2
+        
+        if object:IsA("GuiObject") then
+            object.BackgroundTransparency = transparency
+        end
+    end)
+    
+    table.insert(self.Events, pulseConnection)
+    
+    return function()
+        isPulsing = false
+        if object:IsA("GuiObject") then
+            object.BackgroundTransparency = originalTransparency
+        end
+    end
+end
+
+-- 視覚効果：グロー効果
+function UIManager:AddGlowEffect(object, color, intensity)
+    local glow = Instance.new("UIStroke")
+    glow.Name = "GlowEffect"
+    glow.Color = color or Color3.fromRGB(255, 255, 255)
+    glow.Thickness = 3
+    glow.Transparency = 0.7
+    glow.Parent = object
+    
+    -- パルスするグロー
+    self:AddPulseEffect(glow, 1.5, 0.5, 0.9)
+    
+    return glow
+end
+
+-- 公開API
+function UIManager:SetTitle(title)
+    if self.TitleText then
+        self.TitleText.Text = title
+    end
+end
+
+function UIManager:SetSize(size)
+    self.OriginalSize = size
+    self.MainFrame.Size = size
+end
+
+function UIManager:SetPosition(position)
+    self.OriginalPosition = position
+    self.MainFrame.Position = position
+end
+
+function UIManager:GetContentFrame()
+    return self.ContentFrame
+end
+
+function UIManager:SetVisible(visible)
+    self.ScreenGui.Enabled = visible
+end
+
+function UIManager:IsVisible()
+    return self.ScreenGui.Enabled
+end
+
+-- フレームワーク初期化関数
+local function createAdvancedUI(name)
+    local ui = UIManager.new(name)
+    ui:CreateBaseUI()
+    ui:MakeDraggable()
+    ui:SetupMinimize()
+    ui:SetupResponsive()
+    
+    -- サンプルコンテンツ追加
+    local contentFrame = ui:GetContentFrame()
+    
+    local sampleText = Instance.new("TextLabel")
+    sampleText.Size = UDim2.new(1, 0, 0, 40)
+    sampleText.Position = UDim2.new(0, 0, 0, 0)
+    sampleText.BackgroundTransparency = 1
+    sampleText.Text = "高度なUIフレームワーク"
+    sampleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sampleText.TextSize = 20
+    sampleText.Font = Enum.Font.GothamBold
+    sampleText.Parent = contentFrame
+    
+    local sampleButton = ui:CreateButton("SampleButton", UDim2.new(0, 200, 0, 50), UDim2.new(0.5, -100, 0.5, -25), "クリック！")
+    sampleButton.Parent = contentFrame
+    
+    -- パルス効果をサンプルボタンに追加
+    ui:AddPulseEffect(sampleButton, 2, 0.2, 0.5)
+    
+    -- グロー効果をタイトルに追加
+    ui:AddGlowEffect(ui.TitleText, Color3.fromRGB(100, 200, 255))
+    
+    return ui
+end
+
+-- 使用例
+local advancedUI = createAdvancedUI("Advanced UI Framework")
+
+-- 最小化タイプ切り替え例（開発用）
+local function setupMinimizeTypeSelector(ui)
+    local selectorFrame = Instance.new("Frame")
+    selectorFrame.Size = UDim2.new(1, 0, 0, 30)
+    selectorFrame.Position = UDim2.new(0, 0, 1, 5)
+    selectorFrame.BackgroundTransparency = 1
+    selectorFrame.Parent = ui.ContentFrame
+    
+    local types = {"scale", "fade", "slide", "rotate", "fold", "icon"}
+    local buttonWidth = 1 / #types
+    
+    for i, minType in ipairs(types) do
+        local button = ui:CreateButton(minType, 
+            UDim2.new(buttonWidth, -5, 1, 0), 
+            UDim2.new((i-1) * buttonWidth, 2, 0, 0), 
+            minType:sub(1, 1):upper())
+        button.TextSize = 12
+        button.Parent = selectorFrame
+        
+        button.MouseButton1Click:Connect(function()
+            ui:Minimize(minType)
+        end)
+    end
+end
+
+-- セレクターを追加（開発用）
+setupMinimizeTypeSelector(advancedUI)
+
+-- グローバルアクセス用（オプション）
+return {
+    UIManager = UIManager,
+    createAdvancedUI = createAdvancedUI
+}
