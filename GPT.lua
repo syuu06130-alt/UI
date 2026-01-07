@@ -1,111 +1,136 @@
-----------------------------------------------------------------
--- GOD UI FRAMEWORK BASE
--- LocalScript / UI ONLY / EXTENSIBLE
-----------------------------------------------------------------
+--------------------------------------------------------------------
+-- GOD UI FRAMEWORK : EXTREME LONG BASE
+-- Author : You
+-- Type   : LocalScript
+-- Scope  : UI ONLY (NO GAME LOGIC)
+-- Goal   : 神ってるUIの土台・拡張前提・演出全振り
+--------------------------------------------------------------------
 
---// Services
+-------------------------
+-- SERVICES
+-------------------------
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
 
---// Player
+-------------------------
+-- PLAYER
+-------------------------
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
-----------------------------------------------------------------
--- CONFIG
-----------------------------------------------------------------
+-------------------------
+-- CONFIG TABLE
+-------------------------
 local CONFIG = {
-	MainColor = Color3.fromRGB(25,25,30),
-	DragColor = Color3.fromRGB(45,45,65),
-	AccentColor = Color3.fromRGB(120,120,255),
-	MinimizeColor = Color3.fromRGB(255,200,90),
-	AnimationSpeed = 0.35,
-	CornerRadius = 18
+	Colors = {
+		Main = Color3.fromRGB(24,24,32),
+		Drag = Color3.fromRGB(45,45,70),
+		Accent = Color3.fromRGB(120,140,255),
+		StrokeIdle = Color3.fromRGB(90,90,130),
+		StrokeActive = Color3.fromRGB(180,180,255),
+		Minimize = Color3.fromRGB(255,210,90),
+		ButtonIdle = Color3.fromRGB(50,50,70),
+		ButtonHover = Color3.fromRGB(70,70,100),
+		ButtonPress = Color3.fromRGB(90,90,130)
+	},
+
+	Animation = {
+		DefaultSpeed = 0.35,
+		Fast = 0.18,
+		Slow = 0.6,
+		EaseOut = Enum.EasingStyle.Quint,
+		EaseInOut = Enum.EasingStyle.Sine
+	},
+
+	Layout = {
+		MainScale = Vector2.new(0.36, 0.36),
+		MinScale = Vector2.new(0.12, 0.08),
+		Corner = 18,
+		HeaderHeight = 52
+	}
 }
 
-----------------------------------------------------------------
--- UTILITY
-----------------------------------------------------------------
+-------------------------
+-- UTILITY FUNCTIONS
+-------------------------
 local function Create(class, props)
-	local obj = Instance.new(class)
+	local inst = Instance.new(class)
 	for k,v in pairs(props) do
-		obj[k] = v
+		inst[k] = v
 	end
-	return obj
+	return inst
 end
 
 local function Tween(obj, time, style, direction, props)
 	local info = TweenInfo.new(
-		time or CONFIG.AnimationSpeed,
-		style or Enum.EasingStyle.Quint,
+		time or CONFIG.Animation.DefaultSpeed,
+		style or CONFIG.Animation.EaseOut,
 		direction or Enum.EasingDirection.Out
 	)
-	local tween = TweenService:Create(obj, info, props)
-	tween:Play()
-	return tween
+	local tw = TweenService:Create(obj, info, props)
+	tw:Play()
+	return tw
 end
 
-----------------------------------------------------------------
+-------------------------
 -- SCREEN GUI
-----------------------------------------------------------------
-local ScreenGui = Create("ScreenGui", {
-	Name = "GodUIFramework",
+-------------------------
+local ScreenGui = Create("ScreenGui",{
+	Name = "GodUIFrameworkExtreme",
 	IgnoreGuiInset = true,
 	ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	Parent = PlayerGui
 })
 
-----------------------------------------------------------------
--- SHADOW
-----------------------------------------------------------------
-local Shadow = Create("Frame", {
+-------------------------
+-- SHADOW LAYER
+-------------------------
+local Shadow = Create("Frame",{
 	Name = "Shadow",
-	Size = UDim2.fromScale(0.36,0.36),
-	Position = UDim2.fromScale(0.51,0.52),
 	AnchorPoint = Vector2.new(0.5,0.5),
+	Position = UDim2.fromScale(0.5,0.52),
+	Size = UDim2.fromScale(CONFIG.Layout.MainScale.X + 0.02, CONFIG.Layout.MainScale.Y + 0.02),
 	BackgroundColor3 = Color3.new(0,0,0),
 	BackgroundTransparency = 0.65,
 	ZIndex = 1,
 	Parent = ScreenGui
 })
 
-Create("UICorner", {
-	CornerRadius = UDim.new(0, CONFIG.CornerRadius + 4),
+Create("UICorner",{
+	CornerRadius = UDim.new(0, CONFIG.Layout.Corner + 6),
 	Parent = Shadow
 })
 
-----------------------------------------------------------------
+-------------------------
 -- MAIN FRAME
-----------------------------------------------------------------
-local MainFrame = Create("Frame", {
+-------------------------
+local MainFrame = Create("Frame",{
 	Name = "MainFrame",
-	Size = UDim2.fromScale(0.35,0.35),
-	Position = UDim2.fromScale(0.5,0.5),
 	AnchorPoint = Vector2.new(0.5,0.5),
-	BackgroundColor3 = CONFIG.MainColor,
+	Position = UDim2.fromScale(0.5,0.5),
+	Size = UDim2.fromScale(CONFIG.Layout.MainScale.X, CONFIG.Layout.MainScale.Y),
+	BackgroundColor3 = CONFIG.Colors.Main,
 	ZIndex = 2,
 	Parent = ScreenGui
 })
 
--- Corner
-Create("UICorner", {
-	CornerRadius = UDim.new(0, CONFIG.CornerRadius),
+Create("UICorner",{
+	CornerRadius = UDim.new(0, CONFIG.Layout.Corner),
 	Parent = MainFrame
 })
 
--- Stroke
-local Stroke = Create("UIStroke", {
-	Color = CONFIG.AccentColor,
+local Stroke = Create("UIStroke",{
+	Color = CONFIG.Colors.StrokeIdle,
 	Thickness = 1.5,
 	Transparency = 0.35,
 	Parent = MainFrame
 })
 
--- Padding
-Create("UIPadding", {
+Create("UIPadding",{
 	PaddingTop = UDim.new(0,12),
 	PaddingBottom = UDim.new(0,12),
 	PaddingLeft = UDim.new(0,12),
@@ -113,61 +138,87 @@ Create("UIPadding", {
 	Parent = MainFrame
 })
 
--- Gradient
-local Gradient = Create("UIGradient", {
+local Gradient = Create("UIGradient",{
 	Color = ColorSequence.new{
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(60,60,120)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(70,70,130)),
 		ColorSequenceKeypoint.new(1, Color3.fromRGB(25,25,35))
 	},
-	Rotation = 45,
+	Rotation = 30,
 	Parent = MainFrame
 })
 
-----------------------------------------------------------------
--- HEADER
-----------------------------------------------------------------
-local Header = Create("Frame", {
+-------------------------
+-- HEADER (DRAG AREA)
+-------------------------
+local Header = Create("Frame",{
 	Name = "Header",
-	Size = UDim2.new(1,0,0,48),
+	Size = UDim2.new(1,0,0,CONFIG.Layout.HeaderHeight),
 	BackgroundTransparency = 1,
 	Parent = MainFrame
 })
 
-local Title = Create("TextLabel", {
-	Text = "GOD UI FRAMEWORK",
+local Title = Create("TextLabel",{
+	Text = "GOD UI FRAMEWORK : EXTREME",
 	Font = Enum.Font.GothamBold,
 	TextSize = 18,
-	TextXAlignment = Left,
-	TextColor3 = Color3.new(1,1,1),
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(230,230,255),
 	BackgroundTransparency = 1,
-	Size = UDim2.new(1,-80,1,0),
+	Size = UDim2.new(1,-120,1,0),
 	Parent = Header
 })
 
-----------------------------------------------------------------
--- BUTTONS
-----------------------------------------------------------------
-local MinButton = Create("TextButton", {
-	Name = "Minimize",
-	Size = UDim2.fromOffset(32,32),
-	Position = UDim2.new(1,-40,0,8),
-	BackgroundColor3 = CONFIG.MinimizeColor,
-	Text = "-",
-	TextScaled = true,
-	ZIndex = 3,
-	Parent = Header
-})
+-------------------------
+-- BUTTON BASE FUNCTION
+-------------------------
+local function CreateButton(text, pos)
+	local btn = Create("TextButton",{
+		Text = text,
+		Font = Enum.Font.GothamBold,
+		TextScaled = true,
+		BackgroundColor3 = CONFIG.Colors.ButtonIdle,
+		Size = UDim2.fromOffset(34,34),
+		Position = pos,
+		ZIndex = 3,
+		Parent = Header
+	})
 
-Create("UICorner", {
-	CornerRadius = UDim.new(1,0),
-	Parent = MinButton
-})
+	Create("UICorner",{CornerRadius = UDim.new(1,0), Parent = btn})
 
-----------------------------------------------------------------
--- DRAG SYSTEM
-----------------------------------------------------------------
+	btn.MouseEnter:Connect(function()
+		Tween(btn,CONFIG.Animation.Fast,nil,nil,{
+			BackgroundColor3 = CONFIG.Colors.ButtonHover,
+			Size = UDim2.fromOffset(38,38)
+		})
+	end)
+
+	btn.MouseLeave:Connect(function()
+		Tween(btn,CONFIG.Animation.Fast,nil,nil,{
+			BackgroundColor3 = CONFIG.Colors.ButtonIdle,
+			Size = UDim2.fromOffset(34,34)
+		})
+	end)
+
+	btn.MouseButton1Down:Connect(function()
+		Tween(btn,0.08,nil,nil,{
+			BackgroundColor3 = CONFIG.Colors.ButtonPress
+		})
+	end)
+
+	return btn
+end
+
+-------------------------
+-- MIN / MAX BUTTON
+-------------------------
+local MinButton = CreateButton("-", UDim2.new(1,-44,0,8))
+
+-------------------------
+-- DRAG SYSTEM (ADVANCED)
+-------------------------
 local dragging = false
-local dragStart, startPos
+local dragStart
+local startPos
 
 Header.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -175,13 +226,14 @@ Header.InputBegan:Connect(function(input)
 		dragStart = input.Position
 		startPos = MainFrame.Position
 
-		-- Drag Visuals
 		Tween(MainFrame,0.2,nil,nil,{
-			BackgroundColor3 = CONFIG.DragColor,
-			Size = UDim2.fromScale(0.37,0.37)
+			BackgroundColor3 = CONFIG.Colors.Drag,
+			Size = UDim2.fromScale(CONFIG.Layout.MainScale.X + 0.02, CONFIG.Layout.MainScale.Y + 0.02)
 		})
+
 		Tween(Stroke,0.2,nil,nil,{
 			Thickness = 3,
+			Color = CONFIG.Colors.StrokeActive,
 			Transparency = 0
 		})
 	end
@@ -198,7 +250,7 @@ UserInputService.InputChanged:Connect(function(input)
 			startPos.Y.Offset + delta.Y
 		)
 
-		Shadow.Position = MainFrame.Position + UDim2.fromOffset(8,8)
+		Shadow.Position = MainFrame.Position + UDim2.fromOffset(10,10)
 	end
 end)
 
@@ -206,39 +258,31 @@ UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = false
 
-		-- Drag End
-		Tween(MainFrame,0.3,Enum.EasingStyle.Back,nil,{
-			BackgroundColor3 = CONFIG.MainColor,
-			Size = UDim2.fromScale(0.35,0.35)
+		Tween(MainFrame,0.35,Enum.EasingStyle.Back,nil,{
+			BackgroundColor3 = CONFIG.Colors.Main,
+			Size = UDim2.fromScale(CONFIG.Layout.MainScale.X, CONFIG.Layout.MainScale.Y)
 		})
-		Tween(Stroke,0.3,nil,nil,{
+
+		Tween(Stroke,0.35,nil,nil,{
 			Thickness = 1.5,
+			Color = CONFIG.Colors.StrokeIdle,
 			Transparency = 0.35
 		})
 	end
 end)
 
-----------------------------------------------------------------
--- MINIMIZE SYSTEM (BASE)
-----------------------------------------------------------------
+-------------------------
+-- MINIMIZE SYSTEM (STATE BASE)
+-------------------------
 local minimized = false
 local originalSize = MainFrame.Size
-
-MinButton.MouseEnter:Connect(function()
-	Tween(MinButton,0.15,nil,nil,{BackgroundColor3 = Color3.fromRGB(255,220,130)})
-end)
-
-MinButton.MouseLeave:Connect(function()
-	Tween(MinButton,0.15,nil,nil,{BackgroundColor3 = CONFIG.MinimizeColor})
-end)
 
 MinButton.MouseButton1Click:Connect(function()
 	minimized = not minimized
 
 	if minimized then
-		-- Scale + Fade minimize
 		Tween(MainFrame,0.45,Enum.EasingStyle.Exponential,nil,{
-			Size = UDim2.fromScale(0.12,0.08),
+			Size = UDim2.fromScale(CONFIG.Layout.MinScale.X, CONFIG.Layout.MinScale.Y),
 			BackgroundTransparency = 0.25
 		})
 		Tween(Shadow,0.45,nil,nil,{
@@ -255,24 +299,25 @@ MinButton.MouseButton1Click:Connect(function()
 	end
 end)
 
-----------------------------------------------------------------
--- APPEAR ANIMATION
-----------------------------------------------------------------
+-------------------------
+-- UI APPEAR ANIMATION
+-------------------------
 MainFrame.BackgroundTransparency = 1
 Shadow.BackgroundTransparency = 1
 
-Tween(MainFrame,0.6,nil,nil,{BackgroundTransparency = 0})
-Tween(Shadow,0.6,nil,nil,{BackgroundTransparency = 0.65})
+Tween(MainFrame,0.7,nil,nil,{BackgroundTransparency = 0})
+Tween(Shadow,0.7,nil,nil,{BackgroundTransparency = 0.65})
 
-----------------------------------------------------------------
--- PLACEHOLDER CONTENT (UI ONLY)
-----------------------------------------------------------------
-for i = 1,5 do
+-------------------------
+-- PLACEHOLDER CONTENT
+-------------------------
+for i = 1,8 do
 	local Item = Create("Frame",{
-		Size = UDim2.new(1,0,0,40),
-		BackgroundColor3 = Color3.fromRGB(40,40,55),
-		BackgroundTransparency = 0.2,
+		Size = UDim2.new(1,0,0,42),
+		BackgroundColor3 = Color3.fromRGB(45,45,65),
+		BackgroundTransparency = 0.15,
+		LayoutOrder = i,
 		Parent = MainFrame
 	})
-	Create("UICorner",{CornerRadius = UDim.new(0,10),Parent = Item})
+	Create("UICorner",{CornerRadius = UDim.new(0,12), Parent = Item})
 end
